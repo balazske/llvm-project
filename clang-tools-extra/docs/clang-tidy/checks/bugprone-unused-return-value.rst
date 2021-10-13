@@ -29,3 +29,6 @@ Options
    - ``std::basic_string::empty()`` and ``std::vector::empty()``. Not using the
      return value often indicates that the programmer confused the function with
      ``clear()``.
+
+`cert-err33-c` is a version of this check that checks exactly the functions
+listed in CERT_rule ERR33-C.
