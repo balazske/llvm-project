@@ -92,6 +92,10 @@ New checks
   instances from the factory function to class template argument
   deduction (CTAD), in C++17 and higher.
 
+- New :doc:`bugprone-shared-ptr-array-mismatch <clang-tidy/checks/bugprone-shared-ptr-array-mismatch>` check.
+
+  Finds initializations of C++ shared pointers to non-array type that are initialized with an array.
+
 - New :doc:`bugprone-suspicious-memory-comparison
   <clang-tidy/checks/bugprone-suspicious-memory-comparison>` check.
 
