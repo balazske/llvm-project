@@ -530,6 +530,10 @@ def VforkChecker : Checker<"Vfork">,
 
 let ParentPackage = UnixAlpha in {
 
+def ErrnoChecker : Checker<"Errno">,
+  HelpText<"Check handling of 'errno'.">,
+  Documentation<HasDocumentation>;
+
 def ChrootChecker : Checker<"Chroot">,
   HelpText<"Check improper use of chroot">,
   Documentation<HasAlphaDocumentation>;

@@ -761,10 +761,10 @@ class SymbolicRegion : public SubRegion {
     // Because pointer arithmetic is represented by ElementRegion layers,
     // the base symbol here should not contain any arithmetic.
     assert(s && isa<SymbolData>(s));
-    assert(s->getType()->isAnyPointerType() ||
-           s->getType()->isReferenceType() ||
-           s->getType()->isBlockPointerType());
-    assert(isa<UnknownSpaceRegion>(sreg) || isa<HeapSpaceRegion>(sreg));
+    //assert(s->getType()->isAnyPointerType() ||
+    //       s->getType()->isReferenceType() ||
+    //       s->getType()->isBlockPointerType());
+    //assert(isa<UnknownSpaceRegion>(sreg) || isa<HeapSpaceRegion>(sreg));
   }
 
 public:
@@ -1375,7 +1375,8 @@ public:
                                         const LocationContext *LC);
 
   /// Retrieve or create a "symbolic" memory region.
-  const SymbolicRegion* getSymbolicRegion(SymbolRef Sym);
+  const SymbolicRegion *
+  getSymbolicRegion(SymbolRef Sym, const MemSpaceRegion *MemSpace = nullptr);
 
   /// Return a unique symbolic region belonging to heap memory space.
   const SymbolicRegion *getSymbolicHeapRegion(SymbolRef sym);
