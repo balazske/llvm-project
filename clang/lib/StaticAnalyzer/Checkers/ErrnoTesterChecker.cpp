@@ -20,6 +20,7 @@
 
 using namespace clang;
 using namespace ento;
+using namespace errno_modeling;
 
 namespace {
 
@@ -33,6 +34,7 @@ private:
   static void evalSetErrnoIfError(CheckerContext &C, const CallEvent &Call);
   static void evalSetErrnoIfErrorRange(CheckerContext &C,
                                        const CallEvent &Call);
+  static void evalSetErrnoCheckState(CheckerContext &C, const CallEvent &Call);
 
   using EvalFn = std::function<void(CheckerContext &, const CallEvent &)>;
   const CallDescriptionMap<EvalFn> TestCalls{
@@ -41,22 +43,24 @@ private:
       {{"ErrnoTesterChecker_setErrnoIfError", 0},
        &ErrnoTesterChecker::evalSetErrnoIfError},
       {{"ErrnoTesterChecker_setErrnoIfErrorRange", 0},
-       &ErrnoTesterChecker::evalSetErrnoIfErrorRange}};
+       &ErrnoTesterChecker::evalSetErrnoIfErrorRange},
+      {{"ErrnoTesterChecker_setErrnoCheckState", 0},
+       &ErrnoTesterChecker::evalSetErrnoCheckState}};
 };
 
 } // namespace
 
 void ErrnoTesterChecker::evalSetErrno(CheckerContext &C,
                                       const CallEvent &Call) {
-  C.addTransition(errno_modeling::setErrnoValue(
-      C.getState(), C.getLocationContext(), Call.getArgSVal(0)));
+  C.addTransition(setErrnoValue(C.getState(), C.getLocationContext(),
+                                Call.getArgSVal(0), Errno_Irrelevant));
 }
 
 void ErrnoTesterChecker::evalGetErrno(CheckerContext &C,
                                       const CallEvent &Call) {
   ProgramStateRef State = C.getState();
 
-  Optional<SVal> ErrnoVal = errno_modeling::getErrnoValue(State);
+  Optional<SVal> ErrnoVal = getErrnoValue(State);
   assert(ErrnoVal && "Errno value should be available.");
   State =
       State->BindExpr(Call.getOriginExpr(), C.getLocationContext(), *ErrnoVal);
@@ -74,7 +78,7 @@ void ErrnoTesterChecker::evalSetErrnoIfError(CheckerContext &C,
 
   ProgramStateRef StateFailure = State->BindExpr(
       Call.getOriginExpr(), C.getLocationContext(), SVB.makeIntVal(1, true));
-  StateFailure = errno_modeling::setErrnoValue(StateFailure, C, 11);
+  StateFailure = setErrnoValue(StateFailure, C, 11, Errno_Irrelevant);
 
   C.addTransition(StateSuccess);
   C.addTransition(StateFailure);
@@ -94,11 +98,38 @@ void ErrnoTesterChecker::evalSetErrnoIfErrorRange(CheckerContext &C,
       nullptr, Call.getOriginExpr(), C.getLocationContext(), C.blockCount());
   StateFailure = StateFailure->assume(ErrnoVal, true);
   assert(StateFailure && "Failed to assume on an initial value.");
-  StateFailure = errno_modeling::setErrnoValue(
-      StateFailure, C.getLocationContext(), ErrnoVal);
+  StateFailure = setErrnoValue(StateFailure, C.getLocationContext(), ErrnoVal,
+                               Errno_Irrelevant);
 
   C.addTransition(StateSuccess);
   C.addTransition(StateFailure);
+}
+
+void ErrnoTesterChecker::evalSetErrnoCheckState(CheckerContext &C,
+                                                const CallEvent &Call) {
+  ProgramStateRef State = C.getState();
+  SValBuilder &SVB = C.getSValBuilder();
+
+  ProgramStateRef StateSuccess = State->BindExpr(
+      Call.getOriginExpr(), C.getLocationContext(), SVB.makeIntVal(0, true));
+  StateSuccess = setErrnoState(StateSuccess, Errno_MustNotBeChecked);
+
+  ProgramStateRef StateFailure1 = State->BindExpr(
+      Call.getOriginExpr(), C.getLocationContext(), SVB.makeIntVal(1, true));
+  StateFailure1 = setErrnoValue(StateFailure1, C, 1, Errno_Irrelevant);
+
+  ProgramStateRef StateFailure2 = State->BindExpr(
+      Call.getOriginExpr(), C.getLocationContext(), SVB.makeIntVal(2, true));
+  StateFailure2 = setErrnoValue(StateFailure2, C, 2, Errno_MustBeChecked);
+
+  C.addTransition(StateSuccess,
+                  getErrnoNoteTag(C, "Assuming that this function succeeds but "
+                                     "sets 'errno' to an unspecified value."));
+  C.addTransition(StateFailure1);
+  C.addTransition(
+      StateFailure2,
+      getErrnoNoteTag(C, "Assuming that this function returns 2. 'errno' "
+                         "should be checked to test for failure."));
 }
 
 bool ErrnoTesterChecker::evalCall(const CallEvent &Call,
