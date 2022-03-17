@@ -76,6 +76,8 @@ static const MemRegion *getErrnoRegion(ProgramStateRef State) {
   return reinterpret_cast<const MemRegion *>(State->get<ErrnoRegion>());
 }
 
+REGISTER_TRAIT_WITH_PROGRAMSTATE(ErrnoState, unsigned)
+
 /// Search for a variable called "errno" in the AST.
 /// Return nullptr if not found.
 static const VarDecl *getErrnoVar(ASTContext &ACtx) {
@@ -147,7 +149,8 @@ void ErrnoModeling::checkBeginFunction(CheckerContext &C) const {
         State->getRegion(ErrnoVar, C.getLocationContext());
     assert(ErrnoR && "Memory region should exist for the 'errno' variable.");
     State = State->set<ErrnoRegion>(ErrnoR);
-    State = errno_modeling::setErrnoValue(State, C, 0);
+    State = errno_modeling::setErrnoValue(State, C, 0,
+                                          errno_modeling::Errno_Irrelevant);
     C.addTransition(State);
   } else if (ErrnoDecl) {
     assert(isa<FunctionDecl>(ErrnoDecl) && "Invalid errno location function.");
@@ -174,7 +177,8 @@ void ErrnoModeling::checkBeginFunction(CheckerContext &C) const {
         ACtx.IntTy, SVB.makeZeroArrayIndex(),
         RMgr.getSymbolicRegion(Sym, GlobalSystemSpace), C.getASTContext());
     State = State->set<ErrnoRegion>(ErrnoR);
-    State = errno_modeling::setErrnoValue(State, C, 0);
+    State = errno_modeling::setErrnoValue(State, C, 0,
+                                          errno_modeling::Errno_Irrelevant);
     C.addTransition(State);
   }
 }
@@ -218,22 +222,44 @@ Optional<SVal> getErrnoValue(ProgramStateRef State) {
 }
 
 ProgramStateRef setErrnoValue(ProgramStateRef State,
-                              const LocationContext *LCtx, SVal Value) {
+                              const LocationContext *LCtx, SVal Value,
+                              ErrnoCheckState EState) {
   const MemRegion *ErrnoR = getErrnoRegion(State);
   if (!ErrnoR)
     return State;
-  return State->bindLoc(loc::MemRegionVal{ErrnoR}, Value, LCtx);
+  // First set the errno value, the old state is still available at 'checkBind'
+  // or 'checkLocation' for errno value.
+  State = State->bindLoc(loc::MemRegionVal{ErrnoR}, Value, LCtx);
+  return State->set<ErrnoState>(EState);
 }
 
 ProgramStateRef setErrnoValue(ProgramStateRef State, CheckerContext &C,
-                              uint64_t Value) {
+                              uint64_t Value, ErrnoCheckState EState) {
   const MemRegion *ErrnoR = getErrnoRegion(State);
   if (!ErrnoR)
     return State;
-  return State->bindLoc(
+  State = State->bindLoc(
       loc::MemRegionVal{ErrnoR},
       C.getSValBuilder().makeIntVal(Value, C.getASTContext().IntTy),
       C.getLocationContext());
+  return State->set<ErrnoState>(EState);
+}
+
+Optional<Loc> getErrnoLoc(ProgramStateRef State) {
+  const MemRegion *ErrnoR = getErrnoRegion(State);
+  if (!ErrnoR)
+    return {};
+  return loc::MemRegionVal{ErrnoR};
+}
+
+ProgramStateRef setErrnoStateIrrelevant(ProgramStateRef State) {
+  return State->set<ErrnoState>(Errno_Irrelevant);
+}
+
+ErrnoCheckState getErrnoState(ProgramStateRef State) {
+  if (unsigned EState = State->get<ErrnoState>())
+    return static_cast<ErrnoCheckState>(EState);
+  return Errno_Irrelevant;
 }
 
 } // namespace errno_modeling
