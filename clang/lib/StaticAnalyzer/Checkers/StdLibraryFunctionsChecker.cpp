@@ -388,6 +388,10 @@ class StdLibraryFunctionsChecker
     errno_modeling::ErrnoCheckState const CheckState;
 
     ErrnoConstraintKind(errno_modeling::ErrnoCheckState CS) : CheckState(CS) {}
+
+    // This is used for conjure symbol for errno to differentiate from the
+    // original call expression (same expression is used for the errno symbol).
+    static int Tag;
   };
 
   class SingleValueErrnoConstraint : public ErrnoConstraintKind {
@@ -417,7 +421,7 @@ class StdLibraryFunctionsChecker
                           CheckerContext &C) const override {
       SValBuilder &SVB = C.getSValBuilder();
       NonLoc ErrnoSVal =
-          SVB.conjureSymbolVal(nullptr, Call.getOriginExpr(),
+          SVB.conjureSymbolVal(&Tag, Call.getOriginExpr(),
                                C.getLocationContext(), C.getASTContext().IntTy,
                                C.blockCount())
               .castAs<NonLoc>();
@@ -720,6 +724,8 @@ private:
   ZeroRelatedErrnoConstraint ErrnoNEZeroIrrelevant{
       clang::BinaryOperatorKind::BO_EQ, errno_modeling::Errno_MustNotBeChecked};
 };
+
+int StdLibraryFunctionsChecker::ErrnoConstraintKind::Tag = 0;
 
 const StdLibraryFunctionsChecker::ArgNo StdLibraryFunctionsChecker::Ret =
     std::numeric_limits<ArgNo>::max();
