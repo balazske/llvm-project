@@ -62,6 +62,8 @@ private:
                                         {"__errno", 0, 0},
                                         {"_errno", 0, 0},
                                         {"__error", 0, 0}};
+
+  BugType BT_Debug{this, "ErrnoInfo", "DebugInfo"};
 };
 
 } // namespace
@@ -131,6 +133,13 @@ void ErrnoModeling::checkASTDecl(const TranslationUnitDecl *D,
   ErrnoDecl = getErrnoVar(Mgr.getASTContext());
   if (!ErrnoDecl)
     ErrnoDecl = getErrnoFunc(Mgr.getASTContext());
+
+  if (ErrnoDecl)
+    llvm::errs() << "errno found\n";
+  SourceManager &SM = Mgr.getSourceManager();
+  PathDiagnosticLocation Loc{SM.getLocForStartOfFile(SM.getMainFileID()), SM};
+  const char *Desc = ErrnoDecl ? "Errno found" : "Errno not found";
+  BR.emitReport(std::make_unique<ento::BasicBugReport>(BT_Debug, Desc, Loc));
 }
 
 void ErrnoModeling::checkBeginFunction(CheckerContext &C) const {
