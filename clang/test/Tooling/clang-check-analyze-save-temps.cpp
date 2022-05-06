@@ -1,3 +1,4 @@
+// XFAIL:*
 // Check whether output generation options (like -save-temps) will not affect
 // the execution of the analyzer.
 

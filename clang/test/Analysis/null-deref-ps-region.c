@@ -1,3 +1,4 @@
+// XFAIL:*
 // RUN: %clang_analyze_cc1 -verify %s -std=gnu99 \
 // RUN:  -analyzer-checker=core \
 // RUN:  -analyzer-checker=alpha.core \

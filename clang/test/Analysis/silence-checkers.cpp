@@ -1,3 +1,4 @@
+// XFAIL:*
 // RUN: %clang_analyze_cc1 -verify="no-silence" %s \
 // RUN:   -triple i386-unknown-linux-gnu \
 // RUN:   -analyzer-checker=core,apiModeling \

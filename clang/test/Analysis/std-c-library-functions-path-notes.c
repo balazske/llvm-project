@@ -1,3 +1,4 @@
+// XFAIL:*
 // RUN: %clang_analyze_cc1 -verify %s \
 // RUN:     -analyzer-checker=core,apiModeling \
 // RUN:     -analyzer-config assume-controlled-environment=false \
