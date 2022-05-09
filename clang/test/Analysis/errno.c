@@ -1,4 +1,3 @@
-// XFAIL:*
 // RUN: %clang_analyze_cc1 -verify %s \
 // RUN:   -analyzer-checker=core \
 // RUN:   -analyzer-checker=apiModeling.Errno \

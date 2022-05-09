@@ -1,4 +1,3 @@
-// XFAIL:*
 // FIXME: Actually, "perl".
 REQUIRES: shell
 

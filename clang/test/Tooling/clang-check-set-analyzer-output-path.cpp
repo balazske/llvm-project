@@ -1,4 +1,3 @@
-// XFAIL:*
 // RUN: rm -rf %t
 // RUN: mkdir %t
 // RUN: cd %t
