@@ -722,7 +722,7 @@ private:
   NoErrnoConstraint ErrnoIrrelevant;
   SuccessErrnoConstraint ErrnoMustNotBeChecked;
   ZeroRelatedErrnoConstraint ErrnoNEZeroIrrelevant{
-      clang::BinaryOperatorKind::BO_EQ, errno_modeling::Errno_MustNotBeChecked};
+      clang::BinaryOperatorKind::BO_NE, errno_modeling::Errno_Irrelevant};
 };
 
 int StdLibraryFunctionsChecker::ErrnoConstraintKind::Tag = 0;
