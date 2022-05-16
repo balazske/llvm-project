@@ -940,6 +940,9 @@ void StdLibraryFunctionsChecker::applyConstraints(
 
     if (NewState && NewState != State) {
       StringRef Note = Case.getNote();
+      const FunctionDecl *D = dyn_cast_or_null<FunctionDecl>(Call.getDecl());
+      if (Note.empty() && D && &Case.getErrnoConstraint() == &ErrnoMustNotBeChecked)
+          Note = "Assuming that this function is successful, it may leave an undefined value in 'errno'";
       const NoteTag *Tag = C.getNoteTag(
           // Sorry couldn't help myself.
           [Node, Note]() {
