@@ -86,6 +86,11 @@ class StdLibraryFunctionsChecker
   /// Returns the string representation of an argument index.
   /// E.g.: (1) -> '1st arg', (2) - > '2nd arg'
   static SmallString<8> getArgDesc(ArgNo);
+  /// Returns "should be" for arguments and "is" for the return
+  /// value (with spaces). The return value is described after the
+  /// return already happened, arguments are described before the function call.
+  static const char *getVerbForArg(ArgNo ArgN);
+  static const char *describeErrnoCheckState(errno_modeling::ErrnoCheckState CS);
 
   class ValueConstraint;
 
@@ -383,6 +388,7 @@ class StdLibraryFunctionsChecker
     virtual ProgramStateRef apply(ProgramStateRef State, const CallEvent &Call,
                                   const Summary &Summary,
                                   CheckerContext &C) const = 0;
+    virtual std::string describe() const = 0;
 
   protected:
     errno_modeling::ErrnoCheckState const CheckState;
@@ -399,12 +405,21 @@ class StdLibraryFunctionsChecker
 
   public:
     SingleValueErrnoConstraint(uint64_t EV, errno_modeling::ErrnoCheckState CS)
-        : ErrnoConstraintKind(CS), ErrnoValue(EV) {}
+        : ErrnoConstraintKind(CS), ErrnoValue(EV) { assert(CS != errno_modeling::Errno_Irrelevant && "errno may not be irrelevant at this constraint."); }
 
     ProgramStateRef apply(ProgramStateRef State, const CallEvent &Call,
                           const Summary &Summary,
                           CheckerContext &C) const override {
       return errno_modeling::setErrnoValue(State, C, ErrnoValue, CheckState);
+    }
+
+    std::string describe() const override {
+      std::string Result = "The value of 'errno' is set to ";
+      Result.append(std::to_string(ErrnoValue));
+      Result.append(" and ");
+      Result.append(describeErrnoCheckState(CheckState));
+      Result.append(".");
+      return Result;
     }
   };
 
@@ -414,7 +429,7 @@ class StdLibraryFunctionsChecker
   public:
     ZeroRelatedErrnoConstraint(clang::BinaryOperatorKind Rel,
                                errno_modeling::ErrnoCheckState CS)
-        : ErrnoConstraintKind(CS), Relation(Rel) {}
+        : ErrnoConstraintKind(CS), Relation(Rel) { assert(CS != errno_modeling::Errno_Irrelevant && "errno may not be irrelevant at this constraint."); }
 
     ProgramStateRef apply(ProgramStateRef State, const CallEvent &Call,
                           const Summary &Summary,
@@ -436,6 +451,15 @@ class StdLibraryFunctionsChecker
       return errno_modeling::setErrnoValue(State, C.getLocationContext(),
                                            ErrnoSVal, CheckState);
     }
+
+    std::string describe() const override {
+      std::string Result = "The value of 'errno' is ";
+      Result.append(BinaryOperator::getOpcodeStr(Relation).str());
+      Result.append(" 0 and ");
+      Result.append(describeErrnoCheckState(CheckState));
+      Result.append(".");
+      return Result;
+    }
   };
 
   class SuccessErrnoConstraint : public ErrnoConstraintKind {
@@ -448,6 +472,13 @@ class StdLibraryFunctionsChecker
                           CheckerContext &C) const override {
       return errno_modeling::setErrnoState(State, CheckState);
     }
+
+    std::string describe() const override {
+      std::string Result = "The value of 'errno' ";
+      Result.append(describeErrnoCheckState(CheckState));
+      Result.append(".");
+      return Result;
+    }
   };
 
   class NoErrnoConstraint : public ErrnoConstraintKind {
@@ -459,6 +490,10 @@ class StdLibraryFunctionsChecker
                           const Summary &Summary,
                           CheckerContext &C) const override {
       return errno_modeling::setErrnoState(State, CheckState);
+    }
+
+    std::string describe() const override {
+      return "The value of 'errno' is not affected by the function call.";
     }
   };
 
@@ -743,7 +778,8 @@ std::string StdLibraryFunctionsChecker::NotNullConstraint::describe(
   SmallString<48> Result;
   Result += "The ";
   Result += getArgDesc(ArgN);
-  Result += " should not be NULL";
+  Result += getVerbForArg(ArgN);
+  Result += "non-NULL";
   return Result.c_str();
 }
 
@@ -756,7 +792,7 @@ std::string StdLibraryFunctionsChecker::RangeConstraint::describe(
   SmallString<48> Result;
   Result += "The ";
   Result += getArgDesc(ArgN);
-  Result += " should be ";
+  Result += getVerbForArg(ArgN);
 
   // Range kind as a string.
   Kind == OutOfRange ? Result += "out of" : Result += "within";
@@ -786,10 +822,35 @@ std::string StdLibraryFunctionsChecker::RangeConstraint::describe(
 SmallString<8>
 StdLibraryFunctionsChecker::getArgDesc(StdLibraryFunctionsChecker::ArgNo ArgN) {
   SmallString<8> Result;
-  Result += std::to_string(ArgN + 1);
-  Result += llvm::getOrdinalSuffix(ArgN + 1);
-  Result += " arg";
+  if (ArgN == Ret) {
+    Result += "return value";
+  } else {
+    Result += std::to_string(ArgN + 1);
+    Result += llvm::getOrdinalSuffix(ArgN + 1);
+    Result += " arg";
+  }
   return Result;
+}
+
+const char *
+StdLibraryFunctionsChecker::getVerbForArg(StdLibraryFunctionsChecker::ArgNo ArgN) {
+  if (ArgN == Ret)
+    return " is ";
+  else
+    return " should be ";
+}
+
+const char *StdLibraryFunctionsChecker::describeErrnoCheckState(errno_modeling::ErrnoCheckState CS) {
+  switch (CS) {
+  case errno_modeling::Errno_Irrelevant:
+    return "may be used to get additional information about the failure";
+  case errno_modeling::Errno_MustBeChecked:
+    return "should be checked to verify if the call was successful";
+  case errno_modeling::Errno_MustNotBeChecked:
+    return "may be undefined after the call and should not be used";
+  default:
+    llvm_unreachable("unknown enum value");
+  };
 }
 
 std::string StdLibraryFunctionsChecker::BufferSizeConstraint::describe(
@@ -797,7 +858,8 @@ std::string StdLibraryFunctionsChecker::BufferSizeConstraint::describe(
   SmallString<96> Result;
   Result += "The size of the ";
   Result += getArgDesc(ArgN);
-  Result += " should be equal to or less than the value of ";
+  Result += getVerbForArg(ArgN);
+  Result += "equal to or less than the value of ";
   if (ConcreteSize) {
     ConcreteSize->toString(Result);
   } else if (SizeArgN) {
@@ -939,16 +1001,27 @@ void StdLibraryFunctionsChecker::applyConstraints(
       NewState = Case.getErrnoConstraint().apply(NewState, Call, Summary, C);
 
     if (NewState && NewState != State) {
-      StringRef Note = Case.getNote();
-      const FunctionDecl *D = dyn_cast_or_null<FunctionDecl>(Call.getDecl());
-      if (Note.empty() && D && &Case.getErrnoConstraint() == &ErrnoMustNotBeChecked)
-          Note = "Assuming that this function is successful, it may leave an undefined value in 'errno'";
+      //const FunctionDecl *D = dyn_cast_or_null<FunctionDecl>(Call.getDecl());
       const NoteTag *Tag = C.getNoteTag(
           // Sorry couldn't help myself.
-          [Node, Note]() {
+          [Node, &Case, &Summary/*, D*/]()->std::string {
             // Don't emit "Assuming..." note when we ended up
             // knowing in advance which branch is taken.
-            return (Node->succ_size() > 1) ? Note.str() : "";
+            if (Node->succ_size() == 1)
+              return "";
+            StringRef Note = Case.getNote();
+            if (!Note.empty())
+              return Note.str();
+            for (const ValueConstraintPtr &Constraint : Case.getConstraints()) {
+              if (Constraint->getArgNo() == Ret) {
+                std::string Result = "Assuming that the ";
+                Result.append(Constraint->describe(Node->getState(), Summary));
+                Result.append(".");
+                Result.append(Case.getErrnoConstraint().describe());
+                return Result;
+              }
+            }
+            return "";
           },
           /*IsPrunable=*/true);
       C.addTransition(NewState, Tag);
