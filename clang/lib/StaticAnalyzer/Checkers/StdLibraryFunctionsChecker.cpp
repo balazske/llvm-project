@@ -405,7 +405,7 @@ class StdLibraryFunctionsChecker
 
   public:
     SingleValueErrnoConstraint(uint64_t EV, errno_modeling::ErrnoCheckState CS)
-        : ErrnoConstraintKind(CS), ErrnoValue(EV) { assert(CS != errno_modeling::Errno_Irrelevant && "errno may not be irrelevant at this constraint."); }
+        : ErrnoConstraintKind(CS), ErrnoValue(EV) { }
 
     ProgramStateRef apply(ProgramStateRef State, const CallEvent &Call,
                           const Summary &Summary,
@@ -429,7 +429,7 @@ class StdLibraryFunctionsChecker
   public:
     ZeroRelatedErrnoConstraint(clang::BinaryOperatorKind Rel,
                                errno_modeling::ErrnoCheckState CS)
-        : ErrnoConstraintKind(CS), Relation(Rel) { assert(CS != errno_modeling::Errno_Irrelevant && "errno may not be irrelevant at this constraint."); }
+        : ErrnoConstraintKind(CS), Relation(Rel) { }
 
     ProgramStateRef apply(ProgramStateRef State, const CallEvent &Call,
                           const Summary &Summary,
