@@ -15,7 +15,7 @@
 int __not_null(int *);
 void test_not_null(int *x) {
   __not_null(nullptr); // \
-  // expected-note{{The 1st arg should not be NULL}} \
+  // expected-note{{The 1st arg should be non-NULL}} \
   // expected-warning{{}}
 }
 

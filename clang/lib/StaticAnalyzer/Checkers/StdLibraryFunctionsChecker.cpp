@@ -232,6 +232,8 @@ class StdLibraryFunctionsChecker
     ArgNo OtherArgN;
 
   public:
+    std::string describe(ProgramStateRef State,
+                         const Summary &Summary) const override;
     virtual StringRef getName() const override { return "Comparison"; };
     ComparisonConstraint(ArgNo ArgN, BinaryOperator::Opcode Opcode,
                          ArgNo OtherArgN)
@@ -783,6 +785,18 @@ std::string StdLibraryFunctionsChecker::NotNullConstraint::describe(
   return Result.c_str();
 }
 
+std::string StdLibraryFunctionsChecker::ComparisonConstraint::describe(
+    ProgramStateRef State, const Summary &Summary) const {
+  SmallString<48> Result;
+  Result += "The ";
+  Result += getArgDesc(ArgN);
+  Result += getVerbForArg(ArgN);
+  Result += BinaryOperator::getOpcodeStr(Opcode);
+  Result += " ";
+  Result += getArgDesc(OtherArgN);
+  return Result.c_str();
+}
+
 std::string StdLibraryFunctionsChecker::RangeConstraint::describe(
     ProgramStateRef State, const Summary &Summary) const {
 
@@ -1002,26 +1016,25 @@ void StdLibraryFunctionsChecker::applyConstraints(
 
     if (NewState && NewState != State) {
       //const FunctionDecl *D = dyn_cast_or_null<FunctionDecl>(Call.getDecl());
+      std::string Note = Case.getNote().str();
+      if (Note.empty()) {
+        for (const ValueConstraintPtr &Constraint : Case.getConstraints()) {
+          if (Constraint->getArgNo() == Ret) {
+            Note.append(Constraint->describe(NewState, Summary));
+            Note.append(".");
+          }
+        }
+        Note.append(Case.getErrnoConstraint().describe());
+      }
+
       const NoteTag *Tag = C.getNoteTag(
           // Sorry couldn't help myself.
-          [Node, &Case, &Summary/*, D*/]()->std::string {
+          [Node, Note]()->std::string {
             // Don't emit "Assuming..." note when we ended up
             // knowing in advance which branch is taken.
             if (Node->succ_size() == 1)
               return "";
-            StringRef Note = Case.getNote();
-            if (!Note.empty())
-              return Note.str();
-            for (const ValueConstraintPtr &Constraint : Case.getConstraints()) {
-              if (Constraint->getArgNo() == Ret) {
-                std::string Result = "Assuming that the ";
-                Result.append(Constraint->describe(Node->getState(), Summary));
-                Result.append(".");
-                Result.append(Case.getErrnoConstraint().describe());
-                return Result;
-              }
-            }
-            return "";
+            return Note;
           },
           /*IsPrunable=*/true);
       C.addTransition(NewState, Tag);
