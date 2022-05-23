@@ -1024,29 +1024,32 @@ void StdLibraryFunctionsChecker::applyConstraints(
       NewState = Case.getErrnoConstraint().apply(NewState, Call, Summary, C);
 
     if (NewState && NewState != State) {
-      const FunctionDecl *D = dyn_cast_or_null<FunctionDecl>(Call.getDecl());
-      std::string Note = Case.getNote().str();
-      if (Note.empty()) {
+      if (Case.getNote().empty()) {
+        const FunctionDecl *D = dyn_cast_or_null<FunctionDecl>(Call.getDecl());
         /*for (const ValueConstraintPtr &Constraint : Case.getConstraints()) {
           if (Constraint->getArgNo() == Ret) {
             Note.append(Constraint->describe(NewState, Summary));
             Note.append(".");
           }
         }*/
-        Note.append(Case.getErrnoConstraint().describe(D ? D->getNameAsString() : "<unknown>"));
+        C.addTransition(NewState,
+                        errno_modeling::getErrnoNoteTag(
+                            C, Case.getErrnoConstraint().describe(
+                                   D ? D->getNameAsString() : "<unknown>")));
+      } else {
+        StringRef Note = Case.getNote();
+        const NoteTag *Tag = C.getNoteTag(
+            // Sorry couldn't help myself.
+            [Node, Note]() -> std::string {
+              // Don't emit "Assuming..." note when we ended up
+              // knowing in advance which branch is taken.
+              if (Node->succ_size() == 1)
+                return "";
+              return Note.str();
+            },
+            /*IsPrunable=*/true);
+        C.addTransition(NewState, Tag);
       }
-
-      const NoteTag *Tag = C.getNoteTag(
-          // Sorry couldn't help myself.
-          [Node, Note]()->std::string {
-            // Don't emit "Assuming..." note when we ended up
-            // knowing in advance which branch is taken.
-            if (Node->succ_size() == 1)
-              return "";
-            return Note;
-          },
-          /*IsPrunable=*/true);
-      C.addTransition(NewState, Tag);
     }
   }
 }
