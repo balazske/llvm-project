@@ -390,7 +390,7 @@ class StdLibraryFunctionsChecker
     virtual ProgramStateRef apply(ProgramStateRef State, const CallEvent &Call,
                                   const Summary &Summary,
                                   CheckerContext &C) const = 0;
-    virtual std::string describe() const = 0;
+    virtual std::string describe(StringRef FunctionName) const = 0;
 
   protected:
     errno_modeling::ErrnoCheckState const CheckState;
@@ -402,6 +402,7 @@ class StdLibraryFunctionsChecker
     static int Tag;
   };
 
+#if 0
   class SingleValueErrnoConstraint : public ErrnoConstraintKind {
     uint64_t const ErrnoValue;
 
@@ -424,6 +425,7 @@ class StdLibraryFunctionsChecker
       return Result;
     }
   };
+#endif
 
   class ZeroRelatedErrnoConstraint : public ErrnoConstraintKind {
     clang::BinaryOperatorKind Relation;
@@ -454,8 +456,10 @@ class StdLibraryFunctionsChecker
                                            ErrnoSVal, CheckState);
     }
 
-    std::string describe() const override {
-      std::string Result = "The value of 'errno' is ";
+    std::string describe(StringRef FunctionName) const override {
+      std::string Result = "Assuming that function '";
+      Result.append(FunctionName.str());
+      Result.append("' fails. In this case the value 'errno' becomes ");
       Result.append(BinaryOperator::getOpcodeStr(Relation).str());
       Result.append(" 0 and ");
       Result.append(describeErrnoCheckState(CheckState));
@@ -475,8 +479,10 @@ class StdLibraryFunctionsChecker
       return errno_modeling::setErrnoState(State, CheckState);
     }
 
-    std::string describe() const override {
-      std::string Result = "The value of 'errno' ";
+    std::string describe(StringRef FunctionName) const override {
+      std::string Result = "Assuming that function '";
+      Result.append(FunctionName.str());
+      Result.append("' is successful. In this case the value 'errno' ");
       Result.append(describeErrnoCheckState(CheckState));
       Result.append(".");
       return Result;
@@ -494,8 +500,11 @@ class StdLibraryFunctionsChecker
       return errno_modeling::setErrnoState(State, CheckState);
     }
 
-    std::string describe() const override {
-      return "The value of 'errno' is not affected by the function call.";
+    std::string describe(StringRef FunctionName) const override {
+      std::string Result = "The value 'errno' is not affected by call to function '";
+      Result.append(FunctionName.str());
+      Result.append("'.");
+      return Result;
     }
   };
 
@@ -1015,16 +1024,16 @@ void StdLibraryFunctionsChecker::applyConstraints(
       NewState = Case.getErrnoConstraint().apply(NewState, Call, Summary, C);
 
     if (NewState && NewState != State) {
-      //const FunctionDecl *D = dyn_cast_or_null<FunctionDecl>(Call.getDecl());
+      const FunctionDecl *D = dyn_cast_or_null<FunctionDecl>(Call.getDecl());
       std::string Note = Case.getNote().str();
       if (Note.empty()) {
-        for (const ValueConstraintPtr &Constraint : Case.getConstraints()) {
+        /*for (const ValueConstraintPtr &Constraint : Case.getConstraints()) {
           if (Constraint->getArgNo() == Ret) {
             Note.append(Constraint->describe(NewState, Summary));
             Note.append(".");
           }
-        }
-        Note.append(Case.getErrnoConstraint().describe());
+        }*/
+        Note.append(Case.getErrnoConstraint().describe(D ? D->getNameAsString() : "<unknown>"));
       }
 
       const NoteTag *Tag = C.getNoteTag(
