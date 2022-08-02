@@ -3339,16 +3339,19 @@ public:
   }
 
   Optional<bool> VisitVariableArrayType(const VariableArrayType *T) {
+    T->dump();
     llvm_unreachable(
         "Variable array should not occur in deduced return type of a function");
   }
 
   Optional<bool> VisitIncompleteArrayType(const IncompleteArrayType *T) {
+    T->dump();
     llvm_unreachable("Incomplete array should not occur in deduced return type "
                      "of a function");
   }
 
   Optional<bool> VisitDependentArrayType(const IncompleteArrayType *T) {
+    T->dump();
     llvm_unreachable("Dependent array should not occur in deduced return type "
                      "of a function");
   }
@@ -3373,6 +3376,7 @@ private:
       // FIXME: The type is not allowed to be in the function?
       return CheckType(Arg.getNullPtrType());
     case TemplateArgument::Pack:
+      Arg.dump();
       llvm_unreachable(
           "Add the code below and test for it if this place is reached");
       // for (const auto &PackArg: Arg.getPackAsArray())
@@ -3397,7 +3401,8 @@ bool ASTNodeImporter::hasAutoReturnTypeDeclaredInside(FunctionDecl *D) {
   const auto *FromFPT = FromTy->getAs<FunctionProtoType>();
   assert(FromFPT && "Must be called on FunctionProtoType");
 
-  IsTypeDeclaredInsideVisitor Visitor(D);
+  FunctionDecl *Def = D->getDefinition();
+  IsTypeDeclaredInsideVisitor Visitor(Def ? Def : D);
   return Visitor.CheckType(FromFPT->getReturnType());
 }
 

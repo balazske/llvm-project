@@ -6580,6 +6580,28 @@ TEST_P(ImportAutoFunctions, ReturnWithStructDeclaredInside2) {
   EXPECT_TRUE(isa<AutoType>(FPT->getReturnType()));
 }
 
+TEST_P(ImportAutoFunctions, ReturnWithStructDeclaredInside3) {
+  Decl *FromTU = getTuDecl(
+      R"(
+      struct S {
+        constexpr auto foo();
+      };
+      constexpr auto S::foo() {
+        struct X {};
+        return X();
+      }
+      )",
+      Lang_CXX14, "input0.cc");
+  FunctionDecl *From =
+      FirstDeclMatcher<FunctionDecl>().match(FromTU, functionDecl(hasName("foo"), unless(hasBody(stmt()))));
+  ASSERT_FALSE(From->isThisDeclarationADefinition());
+
+  FunctionDecl *To = Import(From, Lang_CXX17);
+  EXPECT_TRUE(To);
+  EXPECT_TRUE(isa<AutoType>(To->getReturnType()));
+  EXPECT_FALSE(To->isThisDeclarationADefinition());
+}
+
 TEST_P(ImportAutoFunctions, ReturnWithTypedefToStructDeclaredInside) {
   testImport(
       R"(
@@ -6652,6 +6674,63 @@ TEST_P(ImportAutoFunctions, ReturnWithTypeInSwitch) {
       Lang_CXX17);
 }
 
+TEST_P(ImportAutoFunctions, Test0) {
+  Decl *FromTU = getTuDecl(
+      R"(
+        template<typename X> class hash;
+        template<typename X> class equal_to;
+        template<typename X> class allocator;
+        template<typename X, typename Y> class pair;
+        template<typename A, typename B, typename C, typename D, typename E> class __umap_hashtable;
+  template<typename _Key, typename _Tp,
+	   typename _Hash = hash<_Key>,
+	   typename _Pred = equal_to<_Key>,
+	   typename _Alloc = allocator<pair<const _Key, _Tp>>>
+    class unordered_map
+    {
+      typedef __umap_hashtable<_Key, _Tp, _Hash, _Pred, _Alloc>  _Hashtable;
+      //_Hashtable _M_h;
+
+    public:
+      // typedefs:
+      ///@{
+      /// Public typedefs.
+      typedef typename _Hashtable::key_type	key_type;
+      typedef typename _Hashtable::value_type	value_type;
+      typedef typename _Hashtable::mapped_type	mapped_type;
+      typedef typename _Hashtable::hasher	hasher;
+      typedef typename _Hashtable::key_equal	key_equal;
+      typedef typename _Hashtable::allocator_type allocator_type;
+      ///@}
+      unordered_map(int __l,
+		    long __n, const hasher& __hf,
+		    const allocator_type& __a)
+      /*: unordered_map(__l, __n, __hf, key_equal(), __a)*/
+      { }
+    };
+      )",
+      Lang_CXX14, "input0.cc");
+  /*Decl *FromTU = getTuDecl(
+      R"(
+        struct A {
+          typedef int allocator_type;
+        };
+  template<typename _Key>
+    class unordered_map
+    {
+      typedef A  _Hashtable;
+      typedef typename _Hashtable::allocator_type allocator_type;
+      unordered_map(const allocator_type& __a, int) {}
+    };
+      )",
+      Lang_CXX14, "input0.cc");*/
+  //FromTU->dumpColor();
+  FunctionDecl *From =
+      FirstDeclMatcher<FunctionDecl>().match(FromTU, cxxConstructorDecl(parameterCountIs(4)));
+
+  FunctionDecl *To = Import(From, Lang_CXX17);
+  EXPECT_TRUE(To);
+}
 struct ImportSourceLocations : ASTImporterOptionSpecificTestBase {};
 
 TEST_P(ImportSourceLocations, PreserveFileIDTreeStructure) {
