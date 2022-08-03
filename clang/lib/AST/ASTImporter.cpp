@@ -3276,6 +3276,8 @@ namespace {
 class IsTypeDeclaredInsideVisitor
     : public TypeVisitor<IsTypeDeclaredInsideVisitor, Optional<bool>> {
 public:
+  QualType DumpT;
+
   IsTypeDeclaredInsideVisitor(const FunctionDecl *ParentDC)
       : ParentDC(ParentDC) {}
 
@@ -3339,25 +3341,25 @@ public:
   }
 
   Optional<bool> VisitVariableArrayType(const VariableArrayType *T) {
-    T->dump();
+    DumpT.dump();
     llvm_unreachable(
         "Variable array should not occur in deduced return type of a function");
   }
 
   Optional<bool> VisitIncompleteArrayType(const IncompleteArrayType *T) {
-    T->dump();
+    DumpT.dump();
     llvm_unreachable("Incomplete array should not occur in deduced return type "
                      "of a function");
   }
 
   Optional<bool> VisitDependentArrayType(const IncompleteArrayType *T) {
-    T->dump();
+    DumpT.dump();
     llvm_unreachable("Dependent array should not occur in deduced return type "
                      "of a function");
   }
 
 private:
-  const DeclContext *const ParentDC;
+  const FunctionDecl *const ParentDC;
 
   bool checkTemplateArgument(const TemplateArgument &Arg) {
     switch (Arg.getKind()) {
@@ -3376,7 +3378,8 @@ private:
       // FIXME: The type is not allowed to be in the function?
       return CheckType(Arg.getNullPtrType());
     case TemplateArgument::Pack:
-      Arg.dump();
+      ParentDC->dumpColor();
+      DumpT.dump();
       llvm_unreachable(
           "Add the code below and test for it if this place is reached");
       // for (const auto &PackArg: Arg.getPackAsArray())
@@ -3403,6 +3406,7 @@ bool ASTNodeImporter::hasAutoReturnTypeDeclaredInside(FunctionDecl *D) {
 
   FunctionDecl *Def = D->getDefinition();
   IsTypeDeclaredInsideVisitor Visitor(Def ? Def : D);
+  Visitor.DumpT = FromFPT->getReturnType();
   return Visitor.CheckType(FromFPT->getReturnType());
 }
 
