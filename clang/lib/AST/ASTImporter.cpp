@@ -3407,7 +3407,9 @@ bool ASTNodeImporter::hasAutoReturnTypeDeclaredInside(FunctionDecl *D) {
   FunctionDecl *Def = D->getDefinition();
   IsTypeDeclaredInsideVisitor Visitor(Def ? Def : D);
   Visitor.DumpT = FromFPT->getReturnType();
-  return Visitor.CheckType(FromFPT->getReturnType());
+  if (isa<AutoType>(Visitor.DumpT.getTypePtr()))
+    return Visitor.CheckType(Visitor.DumpT);
+  return false;
 }
 
 ExplicitSpecifier
