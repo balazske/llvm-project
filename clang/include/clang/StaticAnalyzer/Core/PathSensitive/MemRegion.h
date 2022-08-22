@@ -529,6 +529,8 @@ public:
 
 /// TypedValueRegion - An abstract class representing regions having a typed value.
 class TypedValueRegion : public TypedRegion {
+  mutable QualType CachedLocationType;
+
   void anchor() override;
 
 protected:
@@ -540,12 +542,15 @@ public:
   virtual QualType getValueType() const = 0;
 
   QualType getLocationType() const override {
-    // FIXME: We can possibly optimize this later to cache this value.
-    QualType T = getValueType();
-    ASTContext &ctx = getContext();
-    if (T->getAs<ObjCObjectType>())
-      return ctx.getObjCObjectPointerType(T);
-    return ctx.getPointerType(getValueType());
+    if (CachedLocationType.isNull()) {
+      QualType T = getValueType();
+      ASTContext &C = getContext();
+      CachedLocationType = T->isObjCObjectType() ? C.getObjCObjectPointerType(T)
+                                                 : C.getPointerType(T);
+      assert(!CachedLocationType.isNull() &&
+             "Cached value supposed to be non-null.");
+    }
+    return CachedLocationType;
   }
 
   QualType getDesugaredValueType(ASTContext &Context) const {
