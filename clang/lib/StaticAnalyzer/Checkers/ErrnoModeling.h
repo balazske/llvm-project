@@ -67,6 +67,9 @@ ProgramStateRef setErrnoValue(ProgramStateRef State, CheckerContext &C,
 /// Set the errno check state, do not modify the errno value.
 ProgramStateRef setErrnoState(ProgramStateRef State, ErrnoCheckState EState);
 
+/// Clear state of errno (make it irrelevant).
+ProgramStateRef clearErrnoState(ProgramStateRef State);
+
 /// Determine if a `Decl` node related to 'errno'.
 /// This is true if the declaration is the errno variable or a function
 /// that returns a pointer to the 'errno' value (usually the 'errno' macro is

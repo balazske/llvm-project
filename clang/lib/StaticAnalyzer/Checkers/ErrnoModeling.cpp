@@ -246,12 +246,16 @@ Optional<Loc> getErrnoLoc(ProgramStateRef State) {
   return loc::MemRegionVal{ErrnoR};
 }
 
+ErrnoCheckState getErrnoState(ProgramStateRef State) {
+  return State->get<ErrnoState>();
+}
+
 ProgramStateRef setErrnoState(ProgramStateRef State, ErrnoCheckState EState) {
   return State->set<ErrnoState>(EState);
 }
 
-ErrnoCheckState getErrnoState(ProgramStateRef State) {
-  return State->get<ErrnoState>();
+ProgramStateRef clearErrnoState(ProgramStateRef State) {
+  return setErrnoState(State, Irrelevant);
 }
 
 bool isErrno(const Decl *D) {

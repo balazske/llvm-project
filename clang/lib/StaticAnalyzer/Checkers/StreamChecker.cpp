@@ -10,6 +10,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "ErrnoModeling.h"
 #include "clang/StaticAnalyzer/Checkers/BuiltinCheckerRegistration.h"
 #include "clang/StaticAnalyzer/Core/BugReporter/BugType.h"
 #include "clang/StaticAnalyzer/Core/Checker.h"
@@ -17,6 +18,7 @@
 #include "clang/StaticAnalyzer/Core/PathSensitive/CallDescription.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/CallEvent.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/CheckerContext.h"
+#include "clang/StaticAnalyzer/Core/PathSensitive/CheckerHelpers.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/ProgramState.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/ProgramStateTrait.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/SymbolManager.h"
@@ -85,10 +87,10 @@ const StreamErrorState ErrorFError{false, false, true};
 /// Full state information about a stream pointer.
 struct StreamState {
   /// The last file operation called in the stream.
+  /// Can be nullptr.
   const FnDescription *LastOperation;
 
   /// State of a stream symbol.
-  /// FIXME: We need maybe an "escaped" state later.
   enum KindTy {
     Opened, /// Stream is opened.
     Closed, /// Closed stream (an invalid stream pointer after it was closed).
@@ -202,7 +204,7 @@ ProgramStateRef bindAndAssumeTrue(ProgramStateRef State, CheckerContext &C,
 ProgramStateRef bindInt(uint64_t Value, ProgramStateRef State,
                         CheckerContext &C, const CallExpr *CE) {
   State = State->BindExpr(CE, C.getLocationContext(),
-                          C.getSValBuilder().makeIntVal(Value, false));
+                          C.getSValBuilder().makeIntVal(Value, CE->getType()));
   return State;
 }
 
@@ -277,6 +279,8 @@ private:
                   ErrorFError),
         0}},
   };
+
+  mutable Optional<int> EofVal;
 
   void evalFopen(const FnDescription *Desc, const CallEvent &Call,
                  CheckerContext &C) const;
@@ -411,6 +415,17 @@ private:
     });
   }
 
+  void initEof(CheckerContext &C) const {
+    if (EofVal)
+      return;
+
+    if (const llvm::Optional<int> OptInt =
+            tryExpandAsInteger("EOF", C.getPreprocessor()))
+      EofVal = *OptInt;
+    else
+      EofVal = -1;
+  }
+
   /// Searches for the ExplodedNode where the file descriptor was acquired for
   /// StreamSym.
   static const ExplodedNode *getAcquisitionSite(const ExplodedNode *N,
@@ -426,8 +441,7 @@ private:
 REGISTER_MAP_WITH_PROGRAMSTATE(StreamMap, SymbolRef, StreamState)
 
 inline void assertStreamStateOpened(const StreamState *SS) {
-  assert(SS->isOpened() &&
-         "Previous create of error node for non-opened stream failed?");
+  assert(SS->isOpened() && "Stream is expected to be opened");
 }
 
 const ExplodedNode *StreamChecker::getAcquisitionSite(const ExplodedNode *N,
@@ -457,6 +471,8 @@ const ExplodedNode *StreamChecker::getAcquisitionSite(const ExplodedNode *N,
 
 void StreamChecker::checkPreCall(const CallEvent &Call,
                                  CheckerContext &C) const {
+  initEof(C);
+
   const FnDescription *Desc = lookupFn(Call);
   if (!Desc || !Desc->PreFn)
     return;
@@ -574,6 +590,10 @@ void StreamChecker::evalFclose(const FnDescription *Desc, const CallEvent &Call,
   if (!SS)
     return;
 
+  auto *CE = dyn_cast_or_null<CallExpr>(Call.getOriginExpr());
+  if (!CE)
+    return;
+
   assertStreamStateOpened(SS);
 
   // Close the File Descriptor.
@@ -581,7 +601,16 @@ void StreamChecker::evalFclose(const FnDescription *Desc, const CallEvent &Call,
   // and can not be used any more.
   State = State->set<StreamMap>(Sym, StreamState::getClosed(Desc));
 
-  C.addTransition(State);
+  // Return 0 on success, EOF on failure.
+  SValBuilder &SVB = C.getSValBuilder();
+  ProgramStateRef StateSuccess = State->BindExpr(
+      CE, C.getLocationContext(), SVB.makeIntVal(0, C.getASTContext().IntTy));
+  ProgramStateRef StateFailure =
+      State->BindExpr(CE, C.getLocationContext(),
+                      SVB.makeIntVal(*EofVal, C.getASTContext().IntTy));
+
+  C.addTransition(StateSuccess);
+  C.addTransition(StateFailure);
 }
 
 void StreamChecker::preFread(const FnDescription *Desc, const CallEvent &Call,
@@ -663,6 +692,8 @@ void StreamChecker::evalFreadFwrite(const FnDescription *Desc,
     // This is the "size or nmemb is zero" case.
     // Just return 0, do nothing more (not clear the error flags).
     State = bindInt(0, State, C, CE);
+    // It is unspecified what can happen with 'errno'.
+    State = errno_modeling::setErrnoState(State, errno_modeling::Irrelevant);
     C.addTransition(State);
     return;
   }
@@ -780,6 +811,8 @@ void StreamChecker::evalClearerr(const FnDescription *Desc,
 
   assertStreamStateOpened(SS);
 
+  // According to POSIX no change to 'errno' shall happen.
+
   // FilePositionIndeterminate is not cleared.
   State = State->set<StreamMap>(
       StreamSym,
@@ -804,6 +837,8 @@ void StreamChecker::evalFeofFerror(const FnDescription *Desc,
     return;
 
   assertStreamStateOpened(SS);
+
+  // According to POSIX no change to 'errno' shall happen.
 
   if (SS->ErrorState & ErrorKind) {
     // Execution path with error of ErrorKind.
