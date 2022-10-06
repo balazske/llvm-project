@@ -98,6 +98,18 @@ void check_fseek(void) {
   (void)fclose(F);
 }
 
+void check_rewind_errnocheck(void) {
+  FILE *F = tmpfile();
+  // expected-note@+2{{'F' is non-null}}
+  // expected-note@+1{{Taking false branch}}
+  if (!F)
+    return;
+  errno = 0;
+  rewind(F); // expected-note{{Function 'rewind' indicates failure only by setting of 'errno'}}
+  fclose(F); // expected-warning{{Value of 'errno' was not checked and may be overwritten by function 'fclose' [alpha.unix.Errno]}}
+  // expected-note@-1{{Value of 'errno' was not checked and may be overwritten by function 'fclose'}}
+}
+
 void check_fileno(void) {
   FILE *F = tmpfile();
   // expected-note@+2{{'F' is non-null}}

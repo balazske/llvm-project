@@ -521,6 +521,21 @@ class StdLibraryFunctionsChecker
     }
   };
 
+  class ErrnoMustBeCheckedConstraint : public ErrnoConstraintBase {
+  public:
+    ProgramStateRef apply(ProgramStateRef State, const CallEvent &Call,
+                          const Summary &Summary,
+                          CheckerContext &C) const override {
+      return errno_modeling::setErrnoStdMustBeChecked(State, C,
+                                                      Call.getOriginExpr());
+    }
+
+    const NoteTag *describe(CheckerContext &C,
+                            StringRef FunctionName) const override {
+      return errno_modeling::getNoteTagForStdMustBeChecked(C, FunctionName);
+    }
+  };
+
   /// A single branch of a function summary.
   ///
   /// A branch is defined by a series of constraints - "assumptions" -
@@ -785,6 +800,7 @@ private:
   /// constraints (and different return value constraints).
   const NoErrnoConstraint ErrnoUnchanged{};
   const ResetErrnoConstraint ErrnoIrrelevant{};
+  const ErrnoMustBeCheckedConstraint ErrnoMustBeChecked{};
   const SuccessErrnoConstraint ErrnoMustNotBeChecked{};
   const FailureErrnoConstraint ErrnoNEZeroIrrelevant{};
 };
@@ -1428,10 +1444,21 @@ void StdLibraryFunctionsChecker::initFunctionSummaries(
   auto IsNull = [&](ArgNo ArgN) {
     return std::make_shared<NotNullConstraint>(ArgN, false);
   };
+  auto NotZero = [&](ArgNo ArgN) {
+    return std::make_shared<NotZeroConstraint>(ArgN);
+  };
+  auto IsZero = [&](ArgNo ArgN) {
+    return std::make_shared<NotZeroConstraint>(ArgN, false);
+  };
 
   Optional<QualType> FileTy = lookupTy("FILE");
   Optional<QualType> FilePtrTy = getPointerTy(FileTy);
   Optional<QualType> FilePtrRestrictTy = getRestrictTy(FilePtrTy);
+
+  Optional<QualType> FPosTTy = lookupTy("fpos_t");
+  Optional<QualType> FPosTPtrTy = getPointerTy(FPosTTy);
+  Optional<QualType> ConstFPosTPtrTy = getPointerTy(getConstTy(FPosTTy));
+  Optional<QualType> FPosTPtrRestrictTy = getRestrictTy(FPosTPtrTy);
 
   // We are finally ready to define specifications for all supported functions.
   //
@@ -1817,6 +1844,46 @@ void StdLibraryFunctionsChecker::initFunctionSummaries(
             .ArgConstraint(NotNull(ArgNo(0)))
             .ArgConstraint(ArgumentCondition(2, WithinRange, {{0, 2}})));
 
+    // int fgetpos(FILE *restrict stream, fpos_t *restrict pos);
+    // From 'The Open Group Base Specifications Issue 7, 2018 edition':
+    // "The fgetpos() function shall not change the setting of errno if
+    // successful."
+    addToFunctionSummaryMap(
+        "fgetpos",
+        Signature(ArgTypes{FilePtrRestrictTy, FPosTPtrRestrictTy},
+                  RetType{IntTy}),
+        Summary(NoEvalCall)
+            .Case({IsZero(ArgNo(Ret))}, ErrnoUnchanged)
+            .Case({NotZero(ArgNo(Ret))}, ErrnoNEZeroIrrelevant)
+            .ArgConstraint(NotNull(ArgNo(0)))
+            .ArgConstraint(NotNull(ArgNo(1))));
+
+    // int fsetpos(FILE *stream, const fpos_t *pos);
+    // From 'The Open Group Base Specifications Issue 7, 2018 edition':
+    // "The fsetpos() function shall not change the setting of errno if
+    // successful."
+    addToFunctionSummaryMap(
+        "fsetpos",
+        Signature(ArgTypes{FilePtrTy, ConstFPosTPtrTy}, RetType{IntTy}),
+        Summary(NoEvalCall)
+            .Case({IsZero(ArgNo(Ret))}, ErrnoUnchanged)
+            .Case({NotZero(ArgNo(Ret))}, ErrnoNEZeroIrrelevant)
+            .ArgConstraint(NotNull(ArgNo(0)))
+            .ArgConstraint(NotNull(ArgNo(1))));
+
+    // long ftell(FILE *stream);
+    // From 'The Open Group Base Specifications Issue 7, 2018 edition':
+    // "The ftell() function shall not change the setting of errno if
+    // successful."
+    addToFunctionSummaryMap(
+        "ftell", Signature(ArgTypes{FilePtrTy}, RetType{LongTy}),
+        Summary(NoEvalCall)
+            .Case({ReturnValueCondition(WithinRange, Range(1, LongMax))},
+                  ErrnoUnchanged)
+            .Case({ReturnValueCondition(WithinRange, SingleValue(-1))},
+                  ErrnoNEZeroIrrelevant)
+            .ArgConstraint(NotNull(ArgNo(0))));
+
     // int fileno(FILE *stream);
     addToFunctionSummaryMap(
         "fileno", Signature(ArgTypes{FilePtrTy}, RetType{IntTy}),
@@ -1824,6 +1891,29 @@ void StdLibraryFunctionsChecker::initFunctionSummaries(
             .Case(ReturnsValidFileDescriptor, ErrnoMustNotBeChecked)
             .Case(ReturnsMinusOne, ErrnoNEZeroIrrelevant)
             .ArgConstraint(NotNull(ArgNo(0))));
+
+    // void rewind(FILE *stream);
+    // This function indicates error only by setting of 'errno'.
+    addToFunctionSummaryMap("rewind",
+                            Signature(ArgTypes{FilePtrTy}, RetType{VoidTy}),
+                            Summary(NoEvalCall)
+                                .Case({}, ErrnoMustBeChecked)
+                                .ArgConstraint(NotNull(ArgNo(0))));
+
+    // void clearerr(FILE *stream);
+    addToFunctionSummaryMap(
+        "clearerr", Signature(ArgTypes{FilePtrTy}, RetType{VoidTy}),
+        Summary(NoEvalCall).ArgConstraint(NotNull(ArgNo(0))));
+
+    // int feof(FILE *stream);
+    addToFunctionSummaryMap(
+        "feof", Signature(ArgTypes{FilePtrTy}, RetType{IntTy}),
+        Summary(NoEvalCall).ArgConstraint(NotNull(ArgNo(0))));
+
+    // int ferror(FILE *stream);
+    addToFunctionSummaryMap(
+        "ferror", Signature(ArgTypes{FilePtrTy}, RetType{IntTy}),
+        Summary(NoEvalCall).ArgConstraint(NotNull(ArgNo(0))));
 
     // long a64l(const char *str64);
     addToFunctionSummaryMap(

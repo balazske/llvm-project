@@ -123,6 +123,64 @@ void check_no_errno_change(void) {
   fclose(F);
 }
 
+void check_fgetpos(void) {
+  FILE *F = tmpfile();
+  if (!F)
+    return;
+  errno = 0;
+  fpos_t Pos;
+  int Ret = fgetpos(F, &Pos);
+  if (Ret)
+    clang_analyzer_eval(errno != 0); // expected-warning{{TRUE}}
+  else
+    clang_analyzer_eval(errno == 0); // expected-warning{{TRUE}}
+  if (errno) {} // no-warning
+  fclose(F);
+}
+
+void check_fsetpos(void) {
+  FILE *F = tmpfile();
+  if (!F)
+    return;
+  errno = 0;
+  fpos_t Pos;
+  int Ret = fsetpos(F, &Pos);
+  if (Ret)
+    clang_analyzer_eval(errno != 0); // expected-warning{{TRUE}}
+  else
+    clang_analyzer_eval(errno == 0); // expected-warning{{TRUE}}
+  if (errno) {} // no-warning
+  fclose(F);
+}
+
+void check_ftell(void) {
+  FILE *F = tmpfile();
+  if (!F)
+    return;
+  errno = 0;
+  long Ret = ftell(F);
+  if (Ret == -1) {
+    clang_analyzer_eval(errno != 0); // expected-warning{{TRUE}}
+  } else {
+    clang_analyzer_eval(errno == 0); // expected-warning{{TRUE}}
+    clang_analyzer_eval(Ret >= 0); // expected-warning{{TRUE}}
+  }
+  if (errno) {} // no-warning
+  fclose(F);
+}
+
+void check_rewind(void) {
+  FILE *F = tmpfile();
+  if (!F)
+    return;
+  errno = 0;
+  rewind(F);
+  clang_analyzer_eval(errno == 0);
+  // expected-warning@-1{{FALSE}}
+  // expected-warning@-2{{TRUE}}
+  fclose(F);
+}
+
 void check_fileno(void) {
   FILE *F = tmpfile();
   if (!F)
