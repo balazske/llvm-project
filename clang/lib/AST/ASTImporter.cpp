@@ -3241,6 +3241,18 @@ static bool isAncestorDeclContextOf(const DeclContext *DC, const Decl *D) {
 // DeclContext that is inside (or equal to) DC. In a specific use case if DC is
 // a FunctionDecl, check if statement S resides in the body of the function.
 static bool isAncestorDeclContextOf(const DeclContext *DC, const Stmt *S) {
+  SmallVector<const Stmt *> ToProcess;
+  ToProcess.push_back(S);
+  while (!ToProcess.empty()) {
+    const Stmt *CurrentS = ToProcess.pop_back_val();
+    ToProcess.append(CurrentS->child_begin(), CurrentS->child_end());
+    if (const auto *DeclRef = dyn_cast<DeclRefExpr>(CurrentS))
+      if (const Decl *D = DeclRef->getDecl())
+        if (isAncestorDeclContextOf(DC, D))
+          return true;
+  }
+  return false;
+#if 0
   ParentMapContext &ParentC = DC->getParentASTContext().getParentMapContext();
   DynTypedNodeList Parents = ParentC.getParents(*S);
   while (!Parents.empty()) {
@@ -3249,6 +3261,7 @@ static bool isAncestorDeclContextOf(const DeclContext *DC, const Stmt *S) {
     Parents = ParentC.getParents(*Parents.begin());
   }
   return false;
+#endif
 }
 
 namespace {
@@ -3405,6 +3418,7 @@ bool ASTNodeImporter::hasAutoReturnTypeDeclaredInside(FunctionDecl *D) {
 
   QualType RetT = FromFPT->getReturnType();
   if (isa<AutoType>(RetT.getTypePtr())) {
+    D->getSourceRange().dump(D->getASTContext().getSourceManager());
     FunctionDecl *Def = D->getDefinition();
     IsTypeDeclaredInsideVisitor Visitor(Def ? Def : D);
     return Visitor.CheckType(RetT);
