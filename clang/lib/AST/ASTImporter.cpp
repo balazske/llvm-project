@@ -1467,6 +1467,22 @@ ExpectedType ASTNodeImporter::VisitInjectedClassNameType(
   // FIXME: ASTContext::getInjectedClassNameType is not suitable for AST reading
   // See comments in InjectedClassNameType definition for details
   // return Importer.getToContext().getInjectedClassNameType(D, InjType);
+
+  // Take the actions in ASTContext::getInjectedClassNameType here as far as
+  // possible. Try to reuse a previous type if it exists.
+  // We want to avoid that multiple InjectedClassNameType objects are created
+  // for the same Decl object. It is not verified if this works always because
+  // differences in the import order and chain of PreviousDecl.
+
+  CXXRecordDecl *ToDecl = *ToDeclOrErr;
+  const Type *TypeForDecl = ToDecl->getTypeForDecl();
+  if (!TypeForDecl && ToDecl->getPreviousDecl())
+    TypeForDecl = ToDecl->getPreviousDecl()->getTypeForDecl();
+  if (TypeForDecl) {
+    assert(isa<InjectedClassNameType>(TypeForDecl));
+    return QualType(TypeForDecl, 0);
+  }
+
   enum {
     TypeAlignmentInBits = 4,
     TypeAlignment = 1 << TypeAlignmentInBits

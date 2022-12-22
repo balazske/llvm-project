@@ -8084,6 +8084,46 @@ TEST_P(ASTImporterOptionSpecificTestBase, isNewDecl) {
   EXPECT_FALSE(SharedStatePtr->isNewDecl(ToBar));
 }
 
+TEST_P(ASTImporterOptionSpecificTestBase, ImportInjectedClassNameType) {
+  Decl *ToTU = getToTuDecl(
+      R"(
+      template <class T>
+      struct A {
+        typedef A A1;
+        void f(A1 *);
+      };
+      )",
+      Lang_CXX11);
+  Decl *FromTU = getTuDecl(
+      R"(
+      template <class T>
+      struct A {
+        typedef A A1;
+        void f(A1 *);
+      };
+      template<class T>
+      void A<T>::f(A::A1 *) {}
+      )",
+      Lang_CXX11);
+
+  auto *FromF = FirstDeclMatcher<FunctionDecl>().match(
+      FromTU, functionDecl(hasName("f"), isDefinition()));
+  auto *ToF = Import(FromF, Lang_CXX11);
+  EXPECT_TRUE(ToF);
+  ASTContext &ToCtx = ToF->getDeclContext()->getParentASTContext();
+
+  auto *ToA1 =
+      FirstDeclMatcher<TypedefDecl>().match(ToTU, typedefDecl(hasName("A1")));
+  QualType ToInjTypedef = ToA1->getUnderlyingType().getCanonicalType();
+  QualType ToInjParmVar =
+      ToF->parameters()[0]->getType().getDesugaredType(ToCtx);
+  ToInjParmVar =
+      ToInjParmVar->getAs<PointerType>()->getPointeeType().getCanonicalType();
+  EXPECT_TRUE(isa<InjectedClassNameType>(ToInjTypedef));
+  EXPECT_TRUE(isa<InjectedClassNameType>(ToInjParmVar));
+  EXPECT_TRUE(ToCtx.hasSameType(ToInjTypedef, ToInjParmVar));
+}
+
 INSTANTIATE_TEST_SUITE_P(ParameterizedTests, ASTImporterLookupTableTest,
                          DefaultTestValuesForRunOptions);
 
