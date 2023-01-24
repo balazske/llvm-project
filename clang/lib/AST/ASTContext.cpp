@@ -4624,10 +4624,24 @@ QualType ASTContext::getInjectedClassNameType(CXXRecordDecl *Decl,
     Decl->TypeForDecl = PrevDecl->TypeForDecl;
     assert(isa<InjectedClassNameType>(Decl->TypeForDecl));
   } else {
-    Type *newType =
+    auto ExistingTy = InjTypes.find(Decl);
+    if (ExistingTy != InjTypes.end()) {
+      llvm::errs()<<"Injected type created for second time:\n";
+      ExistingTy->second->dump();
+      Decl->dumpColor();
+      assert(false);
+    } else {
+      Type *newType =
+        new (*this, TypeAlignment) InjectedClassNameType(Decl, TST);
+      Decl->TypeForDecl = newType;
+      Types.push_back(newType);
+      InjTypes[Decl] = newType;
+    }
+
+    /*Type *newType =
       new (*this, TypeAlignment) InjectedClassNameType(Decl, TST);
     Decl->TypeForDecl = newType;
-    Types.push_back(newType);
+    Types.push_back(newType);*/
   }
   return QualType(Decl->TypeForDecl, 0);
 }

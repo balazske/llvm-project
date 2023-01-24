@@ -1145,6 +1145,9 @@ public:
   /// host code.
   llvm::DenseSet<const ValueDecl *> CUDAExternalDeviceDeclODRUsedByHost;
 
+  /// Test: check for unique injected types
+  mutable llvm::DenseMap<clang::Decl *, Type *> InjTypes;
+
   ASTContext(LangOptions &LOpts, SourceManager &SM, IdentifierTable &idents,
              SelectorTable &sels, Builtin::Context &builtins,
              TranslationUnitKind TUKind);
