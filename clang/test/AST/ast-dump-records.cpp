@@ -289,28 +289,3 @@ struct Derived6 : virtual public Bases... {
   // CHECK: virtual public 'Bases'...
 };
 
-class NonTrivial {
-// CHECK: |-CXXRecordDecl {{.*}} referenced class NonTrivial definition
- public:
-  NonTrivial();
-// CHECK: | |-CXXConstructorDecl {{.*}} referenced NonTrivial 'void ()'
-  ~NonTrivial();
-// CHECK: | |-CXXDestructorDecl {{.*}} referenced ~NonTrivial 'void () noexcept'
-};
-
-struct CheckFullExpression {
-// CHECK: |-CXXRecordDecl {{.*}} struct CheckFullExpression definition
-  NonTrivial value = NonTrivial();
-// CHECK: | |-FieldDecl {{.*}} value 'NonTrivial':'NonTrivial'
-// CHECK-NEXT: | | `-ExprWithCleanups {{.*}} 'NonTrivial':'NonTrivial'
-// CHECK-NEXT: | |   `-CXXBindTemporaryExpr {{.*}} 'NonTrivial':'NonTrivial' (CXXTemporary{{.*}})
-// CHECK-NEXT: | |     `-CXXTemporaryObjectExpr {{.*}} 'NonTrivial':'NonTrivial' 'void ()'
-};
-
-struct CheckNoCleanup {
-// CHECK: `-CXXRecordDecl {{.*}} struct CheckNoCleanup definition
-  static constexpr char kConstant = '+';
-// CHECK: `-VarDecl {{.*}} kConstant 'const char' static inline constexpr cinit
-// CHECK-NEXT: |-value: Int 43
-// CHECK-NEXT: `-CharacterLiteral {{.*}} 'char' 43
-};

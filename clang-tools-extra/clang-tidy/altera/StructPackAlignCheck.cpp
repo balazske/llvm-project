@@ -17,10 +17,11 @@ using namespace clang::ast_matchers;
 namespace clang::tidy::altera {
 
 void StructPackAlignCheck::registerMatchers(MatchFinder *Finder) {
-  Finder->addMatcher(recordDecl(isStruct(), isDefinition(),
-                                unless(isExpansionInSystemHeader()))
-                         .bind("struct"),
-                     this);
+  Finder->addMatcher(
+      recordDecl(isStruct(), isDefinition(),
+                 unless(anyOf(isExpansionInSystemHeader(), isImplicit())))
+          .bind("struct"),
+      this);
 }
 
 CharUnits
