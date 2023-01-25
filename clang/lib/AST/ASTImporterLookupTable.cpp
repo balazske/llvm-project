@@ -67,6 +67,9 @@ struct Builder : RecursiveASTVisitor<Builder> {
         } else if (isa<TypedefType>(Ty)) {
           // We do not put friend typedefs to the lookup table because
           // ASTImporter does not organize typedefs into redecl chains.
+        } else if (isa<UsingType>(Ty)) {
+          // Similar as typedef type, using types are not included in redecl
+          // chains.
         } else {
           llvm_unreachable("Unhandled type of friend class");
         }
