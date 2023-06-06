@@ -471,6 +471,44 @@ def CStringUninitializedRead : Checker<"UninitializedRead">,
   
 } // end "alpha.unix.cstring"
 
+let ParentPackage = UnixAlpha in {
+
+def ErrnoChecker : Checker<"Errno">,
+  HelpText<"Check for improper use of 'errno'">,
+  Dependencies<[ErrnoModeling]>,
+  CheckerOptions<[
+    CmdLineOption<Boolean,
+                  "AllowErrnoReadOutsideConditionExpressions",
+                  "Allow read of undefined value from errno outside of conditions",
+                  "true",
+                  InAlpha>,
+  ]>,
+  Documentation<HasDocumentation>;
+
+def ChrootChecker : Checker<"Chroot">,
+  HelpText<"Check improper use of chroot">,
+  Documentation<HasDocumentation>;
+
+def PthreadLockChecker : Checker<"PthreadLock">,
+  HelpText<"Simple lock -> unlock checker">,
+  Dependencies<[PthreadLockBase]>,
+  Documentation<HasDocumentation>;
+
+def StreamChecker : Checker<"Stream">,
+  HelpText<"Check stream handling functions">,
+  WeakDependencies<[NonNullParamChecker]>,
+  Documentation<HasDocumentation>;
+
+def SimpleStreamChecker : Checker<"SimpleStream">,
+  HelpText<"Check for misuses of stream APIs">,
+  Documentation<HasDocumentation>;
+
+def BlockInCriticalSectionChecker : Checker<"BlockInCriticalSection">,
+  HelpText<"Check for calls to blocking functions inside a critical section">,
+  Documentation<HasDocumentation>;
+
+} // end "alpha.unix"
+
 let ParentPackage = Unix in {
 
 def UnixAPIMisuseChecker : Checker<"API">,
@@ -523,44 +561,6 @@ def VforkChecker : Checker<"Vfork">,
   HelpText<"Check for proper usage of vfork">,
   Documentation<HasDocumentation>;
 
-} // end "unix"
-
-let ParentPackage = UnixAlpha in {
-
-def ErrnoChecker : Checker<"Errno">,
-  HelpText<"Check for improper use of 'errno'">,
-  Dependencies<[ErrnoModeling]>,
-  CheckerOptions<[
-    CmdLineOption<Boolean,
-                  "AllowErrnoReadOutsideConditionExpressions",
-                  "Allow read of undefined value from errno outside of conditions",
-                  "true",
-                  InAlpha>,
-  ]>,
-  Documentation<HasDocumentation>;
-
-def ChrootChecker : Checker<"Chroot">,
-  HelpText<"Check improper use of chroot">,
-  Documentation<HasDocumentation>;
-
-def PthreadLockChecker : Checker<"PthreadLock">,
-  HelpText<"Simple lock -> unlock checker">,
-  Dependencies<[PthreadLockBase]>,
-  Documentation<HasDocumentation>;
-
-def StreamChecker : Checker<"Stream">,
-  HelpText<"Check stream handling functions">,
-  WeakDependencies<[NonNullParamChecker]>,
-  Documentation<HasDocumentation>;
-
-def SimpleStreamChecker : Checker<"SimpleStream">,
-  HelpText<"Check for misuses of stream APIs">,
-  Documentation<HasDocumentation>;
-
-def BlockInCriticalSectionChecker : Checker<"BlockInCriticalSection">,
-  HelpText<"Check for calls to blocking functions inside a critical section">,
-  Documentation<HasDocumentation>;
-
 def StdCLibraryFunctionsChecker : Checker<"StdCLibraryFunctions">,
   HelpText<"Check for invalid arguments of C standard library functions, "
            "and apply relations between arguments and return value">,
@@ -577,12 +577,12 @@ def StdCLibraryFunctionsChecker : Checker<"StdCLibraryFunctions">,
                   "If set to true, the checker models additional functions "
                   "from the POSIX standard.",
                   "false",
-                  InAlpha>
+                  Released>
   ]>,
   WeakDependencies<[CallAndMessageChecker, NonNullParamChecker, StreamChecker]>,
   Documentation<HasDocumentation>;
 
-} // end "alpha.unix"
+} // end "unix"
 
 //===----------------------------------------------------------------------===//
 // C++ checkers.
@@ -1609,6 +1609,7 @@ def DebugIteratorModeling : Checker<"DebugIteratorModeling">,
 def StdCLibraryFunctionsTesterChecker : Checker<"StdCLibraryFunctionsTester">,
   HelpText<"Add test functions to the summary map, so testing of individual "
            "summary constituents becomes possible.">,
+  WeakDependencies<[StdCLibraryFunctionsChecker]>,
   Documentation<NotDocumented>;
 
 } // end "debug"
