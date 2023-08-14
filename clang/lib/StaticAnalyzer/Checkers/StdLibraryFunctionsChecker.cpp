@@ -1371,6 +1371,15 @@ void StdLibraryFunctionsChecker::checkPostCall(const CallEvent &Call,
   const Summary &Summary = *FoundSummary;
   ProgramStateRef State = C.getState();
   ExplodedNode *Node = C.getPredecessor();
+  if (Node->isSink()) {
+    llvm::errs()<<"\nErr---------------------\n";
+    Node->getState()->dump();
+    llvm::errs()<<"\n------------------------\n";
+    Node->getLocation().dump();
+    llvm::errs()<<"\n------------------------\n";
+    Call.dump();
+    llvm::errs()<<"\n------------------------\n";
+  }
 
   // Apply case/branch specifications.
   for (const SummaryCase &Case : Summary.getCases()) {
