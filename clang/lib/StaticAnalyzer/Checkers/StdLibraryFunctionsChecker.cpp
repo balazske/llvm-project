@@ -1371,16 +1371,6 @@ void StdLibraryFunctionsChecker::checkPostCall(const CallEvent &Call,
   const Summary &Summary = *FoundSummary;
   ProgramStateRef State = C.getState();
   ExplodedNode *Node = C.getPredecessor();
-  /*if (Node->isSink()) {
-    llvm::errs()<<"\nErr---------------------\n";
-    Node->getState()->dump();
-    llvm::errs()<<"\n------------------------\n";
-    Node->getLocation().dump();
-    llvm::errs()<<"\n------------------------\n";
-    Call.dump();
-    llvm::errs()<<"\n------------------------\n";
-    assert(false);
-  }*/
 
   // Apply case/branch specifications.
   for (const SummaryCase &Case : Summary.getCases()) {
@@ -1439,6 +1429,19 @@ void StdLibraryFunctionsChecker::checkPostCall(const CallEvent &Call,
       }
       if (!Pred)
         continue;
+    }
+
+    if (Pred->isSink()) {
+      llvm::errs()<<"\nErr-----"<<Pred<<"---"<<Node<<"\n";
+      Pred->getState()->dump();
+      llvm::errs()<<"\n------------------------\n";
+      Node->getState()->dump();
+      llvm::errs()<<"\n------------------------\n";
+      Node->getLocation().dump();
+      llvm::errs()<<"\n------------------------\n";
+      Call.dump();
+      llvm::errs()<<"\n------------------------\n";
+      //assert(false);
     }
 
     // If we can get a note tag for the errno change, add this additionally to
