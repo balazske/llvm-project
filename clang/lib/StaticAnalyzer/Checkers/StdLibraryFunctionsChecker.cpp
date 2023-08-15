@@ -1371,7 +1371,7 @@ void StdLibraryFunctionsChecker::checkPostCall(const CallEvent &Call,
   const Summary &Summary = *FoundSummary;
   ProgramStateRef State = C.getState();
   ExplodedNode *Node = C.getPredecessor();
-  if (Node->isSink()) {
+  /*if (Node->isSink()) {
     llvm::errs()<<"\nErr---------------------\n";
     Node->getState()->dump();
     llvm::errs()<<"\n------------------------\n";
@@ -1380,7 +1380,7 @@ void StdLibraryFunctionsChecker::checkPostCall(const CallEvent &Call,
     Call.dump();
     llvm::errs()<<"\n------------------------\n";
     assert(false);
-  }
+  }*/
 
   // Apply case/branch specifications.
   for (const SummaryCase &Case : Summary.getCases()) {
@@ -1451,7 +1451,7 @@ void StdLibraryFunctionsChecker::checkPostCall(const CallEvent &Call,
 
     // Add the transition if no note tag could be added.
     if (Pred == Node && NewState != State)
-      C.addTransition(NewState);
+      C.addTransition(NewState, Pred);
   }
 }
 
