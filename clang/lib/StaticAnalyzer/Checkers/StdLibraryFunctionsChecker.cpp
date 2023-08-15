@@ -1379,6 +1379,7 @@ void StdLibraryFunctionsChecker::checkPostCall(const CallEvent &Call,
     llvm::errs()<<"\n------------------------\n";
     Call.dump();
     llvm::errs()<<"\n------------------------\n";
+    assert(false);
   }
 
   // Apply case/branch specifications.
