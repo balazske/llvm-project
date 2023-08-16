@@ -202,6 +202,13 @@ using ExplodedNodeVector = BumpVector<ExplodedNode *>;
 using GroupStorage = llvm::PointerUnion<ExplodedNode *, ExplodedNodeVector *>;
 
 void ExplodedNode::addPredecessor(ExplodedNode *V, ExplodedGraph &G) {
+  if (V->isSink()) {
+    llvm::errs()<<"Sink----------------"<<V<<"\n";
+    V->getState()->dump();
+    llvm::errs()<<"------------------------\n";
+    V->getLocation().dump();
+    llvm::errs()<<"------------------------\n";
+  }
   assert(!V->isSink());
   Preds.addNode(V, G);
   V->Succs.addNode(this, G);

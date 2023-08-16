@@ -1431,7 +1431,7 @@ void StdLibraryFunctionsChecker::checkPostCall(const CallEvent &Call,
         continue;
     }
 
-    if (Pred->isSink()) {
+    //if (Pred->isSink()) {
       llvm::errs()<<"\nErr-----"<<Pred<<"---"<<Node<<"\n";
       Pred->getState()->dump();
       llvm::errs()<<"\n------------------------\n";
@@ -1442,7 +1442,7 @@ void StdLibraryFunctionsChecker::checkPostCall(const CallEvent &Call,
       Call.dump();
       llvm::errs()<<"\n------------------------\n";
       //assert(false);
-    }
+    //}
 
     // If we can get a note tag for the errno change, add this additionally to
     // the previous. This note is only about value of 'errno' and is displayed
