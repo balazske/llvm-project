@@ -155,6 +155,9 @@ Bug Fixes to C++ Support
   (`#35574 <https://github.com/llvm/llvm-project/issues/35574>_`) and
   (`#27224 <https://github.com/llvm/llvm-project/issues/27224>_`).
 
+- Update ``FunctionDeclBitfields.NumFunctionDeclBits``. This fixes:
+  (`#64171 <https://github.com/llvm/llvm-project/issues/64171>`_).
+
 Bug Fixes to AST Handling
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 - Fixed an import failure of recursive friend class template.
