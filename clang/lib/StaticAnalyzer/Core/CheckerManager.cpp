@@ -286,8 +286,7 @@ namespace {
       const ProgramPoint &L = Call.getProgramPoint(IsPreVisit,checkFn.Checker);
       CheckerContext C(Bldr, Eng, Pred, L, WasInlined);
 
-      CallEventRef CR = Call.cloneWithState(Pred->getState());
-      checkFn(*CR, C);
+      checkFn(*Call.cloneWithState(Pred->getState()), C);
     }
   };
 
