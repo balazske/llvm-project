@@ -1447,13 +1447,11 @@ void StdLibraryFunctionsChecker::checkPostCall(const CallEvent &Call,
     // If we can get a note tag for the errno change, add this additionally to
     // the previous. This note is only about value of 'errno' and is displayed
     // if 'errno' is interesting.
-    if (const auto *D = dyn_cast<FunctionDecl>(Call.getDecl())) {
+    if (const auto *D = dyn_cast<FunctionDecl>(Call.getDecl()))
       if (const NoteTag *NT =
-              Case.getErrnoConstraint().describe(C, D->getNameAsString())) {
-        //assert(0);
+              Case.getErrnoConstraint().describe(C, D->getNameAsString()))
         Pred = C.addTransition(NewState, Pred, NT);
-      }
-    }
+
     // Add the transition if no note tag could be added.
     if (Pred == Node && NewState != State)
       C.addTransition(NewState, Pred);

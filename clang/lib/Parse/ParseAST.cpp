@@ -180,7 +180,6 @@ void clang::ParseAST(Sema &S, bool PrintStats, bool SkipFunctionBodies) {
   // Sema does not have a reliable "Finalize" function (it has a
   // destructor, but it is not guaranteed to be called ("-disable-free")).
   // So, do the initialization above and do the finalization here:
-  llvm::errs()<<S.TemplateInstCallbacks.size()<<",";
   finalize(S.TemplateInstCallbacks, S);
 
   std::swap(OldCollectStats, S.CollectStats);
