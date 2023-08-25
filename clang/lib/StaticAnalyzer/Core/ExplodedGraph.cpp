@@ -207,6 +207,7 @@ void debug(ExplodedNode *V) {
   llvm::errs()<<"------------------------\n";
   V->getLocation().dump();
   llvm::errs()<<"------------------------\n";
+  V->getState()->getStateManager().getOwningEngine().DumpGraph(false, "test_graph.dot");
 }
 
 void ExplodedNode::addPredecessor(ExplodedNode *V, ExplodedGraph &G) {

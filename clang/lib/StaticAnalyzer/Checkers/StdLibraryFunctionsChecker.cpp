@@ -1360,7 +1360,12 @@ void StdLibraryFunctionsChecker::checkPreCall(const CallEvent &Call,
     }
   }
 }
-
+/*
+void debug(CheckerContext &C, ExplodedNode *Pred) {
+  llvm::errs()<<"\nErr-----"<<Pred<<"---\n";
+  C.getAnalysisManager().
+}
+*/
 void StdLibraryFunctionsChecker::checkPostCall(const CallEvent &Call,
                                                CheckerContext &C) const {
   std::optional<Summary> FoundSummary = findFunctionSummary(Call, C);
@@ -1431,6 +1436,8 @@ void StdLibraryFunctionsChecker::checkPostCall(const CallEvent &Call,
         continue;
     }
 
+    //bool S = static_cast<bool>(Pred->isSink());
+    //(!S) ? (void)0 : debug(C, Pred);
     /*if (!Pred->isSink()) {} else {
       llvm::errs()<<"\nErr-----"<<Pred<<"---"<<Node<<"\n";
       Pred->getState()->dump();
