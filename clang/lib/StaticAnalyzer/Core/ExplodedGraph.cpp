@@ -209,7 +209,9 @@ void ExplodedNode::addPredecessor(ExplodedNode *V, ExplodedGraph &G) {
     V->getLocation().dump();
     llvm::errs()<<"------------------------\n";
   }*/
-  assert(!V->isSink());
+  bool S = static_cast<bool>(V->isSink());
+  assert(!S);
+  //assert(!V->isSink());
   Preds.addNode(V, G);
   V->Succs.addNode(this, G);
 }
