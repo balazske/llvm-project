@@ -201,6 +201,14 @@ void ExplodedGraph::reclaimRecentlyAllocatedNodes() {
 using ExplodedNodeVector = BumpVector<ExplodedNode *>;
 using GroupStorage = llvm::PointerUnion<ExplodedNode *, ExplodedNodeVector *>;
 
+void debug(ExplodedNode *V) {
+  llvm::errs()<<"Sink----------------"<<V<<"\n";
+  V->getState()->dump();
+  llvm::errs()<<"------------------------\n";
+  V->getLocation().dump();
+  llvm::errs()<<"------------------------\n";
+}
+
 void ExplodedNode::addPredecessor(ExplodedNode *V, ExplodedGraph &G) {
   /*if (V->isSink()) {
     llvm::errs()<<"Sink----------------"<<V<<"\n";
@@ -210,6 +218,7 @@ void ExplodedNode::addPredecessor(ExplodedNode *V, ExplodedGraph &G) {
     llvm::errs()<<"------------------------\n";
   }*/
   bool S = static_cast<bool>(V->isSink());
+  (!S) ? (void)0 : debug(V);
   assert(!S);
   //assert(!V->isSink());
   Preds.addNode(V, G);
