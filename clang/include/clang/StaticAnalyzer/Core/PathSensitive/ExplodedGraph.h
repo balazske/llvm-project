@@ -86,9 +86,10 @@ class ExplodedNode : public llvm::FoldingSetNode {
     // a sink. If the low bit is not set, the pointer refers to the storage
     // for the nodes in the group.
     // This is not a PointerIntPair in order to keep the storage type opaque.
-    uintptr_t P;
+    //uintptr_t P;
 
   public:
+    uintptr_t P;
     NodeGroup(bool Flag = false) : P(Flag) {
       assert(getFlag() == Flag);
     }
@@ -130,11 +131,13 @@ class ExplodedNode : public llvm::FoldingSetNode {
   NodeGroup Preds;
 
   /// Succs - The successors of this node.
-  NodeGroup Succs;
+  //NodeGroup Succs;
 
   int64_t Id;
 
 public:
+  NodeGroup Succs;
+
   explicit ExplodedNode(const ProgramPoint &loc, ProgramStateRef state,
                         int64_t Id, bool IsSink)
       : Location(loc), State(std::move(state)), Succs(IsSink), Id(Id) {
