@@ -1010,6 +1010,9 @@ public:
 
   void Profile(llvm::FoldingSetNodeID &ID) const { Profile(ID, this->ID); }
 
+  SymbolRef getRepresentativeSymbol() const {
+    return reinterpret_cast<SymbolRef>(ID);
+  }
 private:
   /* implicit */ EquivalenceClass(SymbolRef Sym)
       : ID(reinterpret_cast<uintptr_t>(Sym)) {}
@@ -1019,9 +1022,9 @@ private:
   /// and should stay that way.
   /// In the current implementation, we use it to retrieve the only member
   /// of the trivial class.
-  SymbolRef getRepresentativeSymbol() const {
-    return reinterpret_cast<SymbolRef>(ID);
-  }
+  //SymbolRef getRepresentativeSymbol() const {
+    //return reinterpret_cast<SymbolRef>(ID);
+  //}
   static inline SymbolSet::Factory &getMembersFactory(ProgramStateRef State);
 
   inline ProgramStateRef mergeImpl(RangeSet::Factory &F, ProgramStateRef State,
@@ -3272,6 +3275,8 @@ void RangeConstraintManager::printConstraints(raw_ostream &Out,
     return;
   }
 
+  bool err = false;
+
   std::map<std::string, RangeSet> OrderedConstraints;
   for (std::pair<EquivalenceClass, RangeSet> P : Constraints) {
     SymbolSet ClassMembers = P.first.getClassMembers(State);
@@ -3279,8 +3284,14 @@ void RangeConstraintManager::printConstraints(raw_ostream &Out,
       bool insertion_took_place;
       std::tie(std::ignore, insertion_took_place) =
           OrderedConstraints.insert({toString(ClassMember), P.second});
-      assert(insertion_took_place &&
-             "two symbols should not have the same dump");
+      if (!insertion_took_place) {
+        Out << "??" << toString(ClassMember) << "??range:\"";
+        P.second.dump(Out);
+        Out<<"\""<<NL;
+        err = true;
+      }
+      //assert(insertion_took_place &&
+        //     "two symbols should not have the same dump");
     }
   }
 
@@ -3303,6 +3314,23 @@ void RangeConstraintManager::printConstraints(raw_ostream &Out,
 
   --Space;
   Indent(Out, Space, IsDot) << "]," << NL;
+
+  if (err) {
+    Out<<"Errrrrrrrrrrrr"<<NL;
+    for (std::pair<EquivalenceClass, RangeSet> P : Constraints) {
+      Out<<"-------------------------"<<NL;
+      P.first.getRepresentativeSymbol()->dumpToStream(Out);
+      Out<<" -"<<reinterpret_cast<uintptr_t>(P.first.getRepresentativeSymbol())<<"- ";
+      P.first.dumpToStream(State, Out);
+      Out<<"-------------------------------"<<NL;
+      for (SymbolRef S : P.first.getRepresentativeSymbol()->symbols()) {
+        Out<<reinterpret_cast<uintptr_t>(S)<<" ((("<<S<<")))((("<<S->getType()<<")))";
+      }
+      Out<<NL;
+    }
+  }
+  assert(!err &&
+         "two symbols should not have the same dump");
 }
 
 static std::string toString(ProgramStateRef State, EquivalenceClass Class) {
