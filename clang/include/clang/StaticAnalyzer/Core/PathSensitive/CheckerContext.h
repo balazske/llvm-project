@@ -188,7 +188,11 @@ public:
   /// checkers should use generateErrorNode() instead.
   ExplodedNode *generateSink(ProgramStateRef State, ExplodedNode *Pred,
                              const ProgramPointTag *Tag = nullptr) {
-    return addTransitionImpl(State ? State : getState(), true, Pred, Tag);
+    auto Ret = addTransitionImpl(State ? State : getState(), true, Pred, Tag);
+    llvm::errs()<<"generateSink,"<<Pred<<","<<Ret<<"\n";
+    if (Ret)
+      Ret->getState()->dump();
+    return Ret;//addTransitionImpl(State ? State : getState(), true, Pred, Tag);
   }
 
   /// Add a sink node to the current path of execution, halting analysis.

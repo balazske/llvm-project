@@ -220,9 +220,9 @@ void ExplodedNode::addPredecessor(ExplodedNode *V, ExplodedGraph &G) {
   }*/
   bool S = static_cast<bool>(V->isSink());
   (!S) ? (void)0 : debug(V);
-  if (V->isSink()) {
-  }
-  if (S) debug(V);
+  //if (V->isSink()) {
+  //}
+  //if (S) debug(V);
   assert(!S);
   //assert(!V->isSink());
   Preds.addNode(V, G);
