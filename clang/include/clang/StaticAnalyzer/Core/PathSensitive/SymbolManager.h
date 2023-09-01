@@ -456,7 +456,7 @@ public:
     ID.AddPointer(getPointer(lhs));
     ID.AddInteger(op);
     ID.AddPointer(getPointer(rhs));
-    ID.Add(t);
+    ID.Add(t.getCanonicalType());
   }
 
   void Profile(llvm::FoldingSetNodeID &ID) override {
