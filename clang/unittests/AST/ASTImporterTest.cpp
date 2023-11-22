@@ -5019,7 +5019,7 @@ TEST_P(ASTImporterOptionSpecificTestBase,
   }
 }
 
-TEST_P(ImportFriendClasses, RecordVarTemplateDecl) {
+TEST_P(ASTImporterOptionSpecificTestBase, RecordVarTemplateDecl) {
   Decl *ToTU = getToTuDecl(
       R"(
       template <class T>
@@ -5051,7 +5051,7 @@ TEST_P(ImportFriendClasses, RecordVarTemplateDecl) {
 }
 
 TEST_P(ASTImporterOptionSpecificTestBase, VarTemplateDeclConflict) {
-  Decl *ToTU = getToTuDecl(
+  getToTuDecl(
       R"(
       template <class U>
       constexpr int X = 1;
@@ -5075,7 +5075,7 @@ TEST_P(ASTImporterOptionSpecificTestBase, VarTemplateStaticDefinition) {
   Decl *ToTU = getToTuDecl(
       R"(
       struct A {
-        template <class U, class V>
+        template <class U>
         static int X;
       };
       )",
@@ -5132,7 +5132,7 @@ TEST_P(ASTImporterOptionSpecificTestBase, VarTemplateSpecializationDeclValue) {
 
 TEST_P(ASTImporterOptionSpecificTestBase,
        VarTemplateSpecializationDeclValueConflict) {
-  Decl *ToTU = getToTuDecl(
+  getToTuDecl(
       R"(
       template <class U>
       constexpr int X = U::Value;

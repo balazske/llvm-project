@@ -1319,16 +1319,33 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
 
 static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
                                      VarDecl *D1, VarDecl *D2) {
-  if (D1->getStorageClass() != D2->getStorageClass())
-    return false;
+  // if (D1->getStorageClass() != D2->getStorageClass()) {
+  // llvm::errs()<<"StorageDifferent\n";
+  // return false;}
 
   IdentifierInfo *Name1 = D1->getIdentifier();
   IdentifierInfo *Name2 = D2->getIdentifier();
   if (!::IsStructurallyEquivalent(Name1, Name2))
     return false;
 
-  if (!IsStructurallyEquivalent(Context, D1->getType(), D2->getType()))
+  if (!IsStructurallyEquivalent(Context, D1->getType(), D2->getType())) {
+    llvm::errs() << "TypeNE\n";
     return false;
+  }
+
+  // Compare storage class and initializer only if none or both are a
+  // definition. Like a forward-declaration matches a class definition, variable
+  // declarations that are not definitions should match with the definitions.
+  if (D1->isThisDeclarationADefinition() !=
+      D2->isThisDeclarationADefinition()) {
+    llvm::errs() << "DeclDefNE\n";
+    return true;
+  }
+
+  if (D1->getStorageClass() != D2->getStorageClass()) {
+    llvm::errs() << "StorageClassNE\n";
+    return false;
+  }
 
   return IsStructurallyEquivalent(Context, D1->getInit(), D2->getInit());
 }
