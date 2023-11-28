@@ -5067,8 +5067,7 @@ TEST_P(ASTImporterOptionSpecificTestBase, VarTemplateDeclConflict) {
   auto *FromX = FirstDeclMatcher<VarTemplateDecl>().match(
       FromTU, varTemplateDecl(hasName("X")));
   auto *ToX = Import(FromX, Lang_CXX11);
-  // FIXME: This import should fail.
-  EXPECT_TRUE(ToX);
+  EXPECT_FALSE(ToX);
 }
 
 TEST_P(ASTImporterOptionSpecificTestBase, VarTemplateStaticDefinition) {
