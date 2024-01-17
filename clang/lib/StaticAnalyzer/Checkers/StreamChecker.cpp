@@ -391,6 +391,22 @@ private:
   void evalFflush(const FnDescription *Desc, const CallEvent &Call,
                   CheckerContext &C) const;
 
+  using GetSuccessStateFn = std::function<ProgramStateRef(
+      SymbolRef, const CallExpr *, ASTContext &, SValBuilder &)>;
+  using GetFailureStateFn =
+      std::function<std::pair<ProgramStateRef, StreamErrorState>(
+          SymbolRef, const CallExpr *, ASTContext &, SValBuilder &)>;
+
+  /// Common part of many eval functions in the checker.
+  /// This can be used for simple stream read and write functions.
+  /// This function handles full modeling of such functions, by passing a
+  /// 'GetSuccessState' and 'GetFailureState' function. These functions should
+  /// create the program state for the success and failure cases. 'IsRead'
+  /// indicates if the modeled function is a stream read or write operation.
+  void evalCommon(const FnDescription *Desc, const CallEvent &Call,
+                  CheckerContext &C, GetSuccessStateFn GetSuccessState,
+                  GetFailureStateFn GetFailureState, bool IsRead) const;
+
   /// Check that the stream (in StreamVal) is not NULL.
   /// If it can only be NULL a fatal error is emitted and nullptr returned.
   /// Otherwise the return value is a new state where the stream is constrained
@@ -538,6 +554,63 @@ const ExplodedNode *StreamChecker::getAcquisitionSite(const ExplodedNode *N,
 //===----------------------------------------------------------------------===//
 // Methods of StreamChecker.
 //===----------------------------------------------------------------------===//
+
+void StreamChecker::evalCommon(const FnDescription *Desc, const CallEvent &Call,
+                               CheckerContext &C,
+                               GetSuccessStateFn GetSuccessState,
+                               GetFailureStateFn GetFailureState,
+                               bool IsRead) const {
+  ProgramStateRef State = C.getState();
+  SymbolRef StreamSym = getStreamArg(Desc, Call).getAsSymbol();
+  if (!StreamSym)
+    return;
+
+  const CallExpr *CE = dyn_cast_or_null<CallExpr>(Call.getOriginExpr());
+  if (!CE)
+    return;
+
+  const StreamState *OldSS = State->get<StreamMap>(StreamSym);
+  if (!OldSS)
+    return;
+
+  assertStreamStateOpened(OldSS);
+
+  SValBuilder &SVB = C.getSValBuilder();
+  ASTContext &ACtx = C.getASTContext();
+
+  if (!IsRead || OldSS->ErrorState != ErrorFEof) {
+    ProgramStateRef StateSuccess = GetSuccessState(StreamSym, CE, ACtx, SVB);
+    if (StateSuccess) {
+      StateSuccess =
+          StateSuccess->set<StreamMap>(StreamSym, StreamState::getOpened(Desc));
+      C.addTransition(StateSuccess);
+    }
+  }
+
+  ProgramStateRef StateFailed;
+  StreamErrorState NewES;
+  std::tie(StateFailed, NewES) = GetFailureState(StreamSym, CE, ACtx, SVB);
+  // If a (non-EOF) error occurs, the resulting value of the file position
+  // indicator for the stream is indeterminate.
+  if (OldSS->ErrorState == ErrorFEof && NewES.FEof) {
+    assert(IsRead && "Stream write function must not produce EOF error.");
+    // If state was EOF before the call and it is possible to get EOF from this
+    // call, create always EOF error.
+    // (Read from an EOF stream results in EOF error, no other error.)
+    StateFailed = StateFailed->set<StreamMap>(
+        StreamSym, StreamState::getOpened(Desc, ErrorFEof, false));
+    C.addTransition(StateFailed);
+  } else {
+    // Position becomes always indeterminate if any read or write error occurs,
+    // except for EOF error.
+    StateFailed = StateFailed->set<StreamMap>(
+        StreamSym, StreamState::getOpened(Desc, NewES, NewES.FError));
+    if (OldSS->ErrorState != ErrorFEof && NewES.FEof)
+      C.addTransition(StateFailed, constructSetEofNoteTag(C, StreamSym));
+    else
+      C.addTransition(StateFailed);
+  }
+}
 
 void StreamChecker::checkPreCall(const CallEvent &Call,
                                  CheckerContext &C) const {
@@ -796,146 +869,93 @@ void StreamChecker::evalFreadFwrite(const FnDescription *Desc,
 
 void StreamChecker::evalFgetx(const FnDescription *Desc, const CallEvent &Call,
                               CheckerContext &C, bool SingleChar) const {
-  ProgramStateRef State = C.getState();
-  SymbolRef StreamSym = getStreamArg(Desc, Call).getAsSymbol();
-  if (!StreamSym)
-    return;
-
-  const CallExpr *CE = dyn_cast_or_null<CallExpr>(Call.getOriginExpr());
-  if (!CE)
-    return;
-
-  const StreamState *OldSS = State->get<StreamMap>(StreamSym);
-  if (!OldSS)
-    return;
-
-  assertStreamStateOpened(OldSS);
-
   // `fgetc` returns the read character on success, otherwise returns EOF.
-  // `fgets` returns the read buffer address on success, otherwise returns NULL.
-
-  if (OldSS->ErrorState != ErrorFEof) {
+  // `fgets` returns the read buffer address on success, otherwise returns
+  // NULL.
+  auto GetSuccessState = [&](SymbolRef StreamSym, const CallExpr *CE,
+                             ASTContext &ACtx,
+                             SValBuilder &SVB) -> ProgramStateRef {
     if (SingleChar) {
-      // Generate a transition for the success state of `fgetc`.
       NonLoc RetVal = makeRetVal(C, CE).castAs<NonLoc>();
       ProgramStateRef StateNotFailed =
-          State->BindExpr(CE, C.getLocationContext(), RetVal);
-      SValBuilder &SVB = C.getSValBuilder();
-      ASTContext &ASTC = C.getASTContext();
+          C.getState()->BindExpr(CE, C.getLocationContext(), RetVal);
       // The returned 'unsigned char' of `fgetc` is converted to 'int',
       // so we need to check if it is in range [0, 255].
       auto CondLow =
-          SVB.evalBinOp(State, BO_GE, RetVal, SVB.makeZeroVal(ASTC.IntTy),
-                        SVB.getConditionType())
+          SVB.evalBinOp(StateNotFailed, BO_GE, RetVal,
+                        SVB.makeZeroVal(ACtx.IntTy), SVB.getConditionType())
               .getAs<DefinedOrUnknownSVal>();
       auto CondHigh =
-          SVB.evalBinOp(State, BO_LE, RetVal,
+          SVB.evalBinOp(StateNotFailed, BO_LE, RetVal,
                         SVB.makeIntVal(SVB.getBasicValueFactory()
-                                           .getMaxValue(ASTC.UnsignedCharTy)
+                                           .getMaxValue(ACtx.UnsignedCharTy)
                                            .getLimitedValue(),
-                                       ASTC.IntTy),
+                                       ACtx.IntTy),
                         SVB.getConditionType())
               .getAs<DefinedOrUnknownSVal>();
       if (!CondLow || !CondHigh)
-        return;
+        return nullptr;
       StateNotFailed = StateNotFailed->assume(*CondLow, true);
       if (!StateNotFailed)
-        return;
-      StateNotFailed = StateNotFailed->assume(*CondHigh, true);
-      if (!StateNotFailed)
-        return;
-      C.addTransition(StateNotFailed);
+        return nullptr;
+      return StateNotFailed->assume(*CondHigh, true);
     } else {
-      // Generate a transition for the success state of `fgets`.
       std::optional<DefinedSVal> GetBuf =
           Call.getArgSVal(0).getAs<DefinedSVal>();
       if (!GetBuf)
-        return;
-      ProgramStateRef StateNotFailed =
-          State->BindExpr(CE, C.getLocationContext(), *GetBuf);
-      StateNotFailed = StateNotFailed->set<StreamMap>(
-          StreamSym, StreamState::getOpened(Desc));
-      C.addTransition(StateNotFailed);
+        return nullptr;
+      return C.getState()->BindExpr(CE, C.getLocationContext(), *GetBuf);
     }
-  }
+  };
+  auto GetFailureState = [&](SymbolRef StreamSym, const CallExpr *CE,
+                             ASTContext &ACtx, SValBuilder &SVB) {
+    StreamErrorState NewES = ErrorFEof | ErrorFError;
+    if (SingleChar)
+      return std::make_pair(bindInt(*EofVal, C.getState(), C, CE), NewES);
+    else
+      return std::make_pair(
+          C.getState()->BindExpr(
+              CE, C.getLocationContext(),
+              C.getSValBuilder().makeNullWithType(CE->getType())),
+          NewES);
+  };
 
-  // Add transition for the failed state.
-  ProgramStateRef StateFailed;
-  if (SingleChar)
-    StateFailed = bindInt(*EofVal, State, C, CE);
-  else
-    StateFailed =
-        State->BindExpr(CE, C.getLocationContext(),
-                        C.getSValBuilder().makeNullWithType(CE->getType()));
-
-  // If a (non-EOF) error occurs, the resulting value of the file position
-  // indicator for the stream is indeterminate.
-  StreamErrorState NewES =
-      OldSS->ErrorState == ErrorFEof ? ErrorFEof : ErrorFEof | ErrorFError;
-  StreamState NewSS = StreamState::getOpened(Desc, NewES, !NewES.isFEof());
-  StateFailed = StateFailed->set<StreamMap>(StreamSym, NewSS);
-  if (OldSS->ErrorState != ErrorFEof)
-    C.addTransition(StateFailed, constructSetEofNoteTag(C, StreamSym));
-  else
-    C.addTransition(StateFailed);
+  evalCommon(Desc, Call, C, GetSuccessState, GetFailureState, /*IsRead=*/true);
 }
 
 void StreamChecker::evalFputx(const FnDescription *Desc, const CallEvent &Call,
                               CheckerContext &C, bool IsSingleChar) const {
-  ProgramStateRef State = C.getState();
-  SymbolRef StreamSym = getStreamArg(Desc, Call).getAsSymbol();
-  if (!StreamSym)
-    return;
-
-  const CallExpr *CE = dyn_cast_or_null<CallExpr>(Call.getOriginExpr());
-  if (!CE)
-    return;
-
-  const StreamState *OldSS = State->get<StreamMap>(StreamSym);
-  if (!OldSS)
-    return;
-
-  assertStreamStateOpened(OldSS);
-
   // `fputc` returns the written character on success, otherwise returns EOF.
   // `fputs` returns a non negative value on sucecess, otherwise returns EOF.
+  auto GetSuccessState = [&](SymbolRef StreamSym, const CallExpr *CE,
+                             ASTContext &ACtx,
+                             SValBuilder &SVB) -> ProgramStateRef {
+    if (IsSingleChar) {
+      // Generate a transition for the success state of `fputc`.
+      std::optional<NonLoc> PutVal = Call.getArgSVal(0).getAs<NonLoc>();
+      if (!PutVal)
+        return nullptr;
+      return C.getState()->BindExpr(CE, C.getLocationContext(), *PutVal);
+    } else {
+      // Generate a transition for the success state of `fputs`.
+      NonLoc RetVal = makeRetVal(C, CE).castAs<NonLoc>();
+      ProgramStateRef StateNotFailed =
+          C.getState()->BindExpr(CE, C.getLocationContext(), RetVal);
+      auto Cond =
+          SVB.evalBinOp(StateNotFailed, BO_GE, RetVal,
+                        SVB.makeZeroVal(ACtx.IntTy), SVB.getConditionType())
+              .getAs<DefinedOrUnknownSVal>();
+      if (!Cond)
+        return nullptr;
+      return StateNotFailed->assume(*Cond, true);
+    }
+  };
+  auto GetFailureState = [&](SymbolRef StreamSym, const CallExpr *CE,
+                             ASTContext &ACtx, SValBuilder &SVB) {
+    return std::make_pair(bindInt(*EofVal, C.getState(), C, CE), ErrorFError);
+  };
 
-  if (IsSingleChar) {
-    // Generate a transition for the success state of `fputc`.
-    std::optional<NonLoc> PutVal = Call.getArgSVal(0).getAs<NonLoc>();
-    if (!PutVal)
-      return;
-    ProgramStateRef StateNotFailed =
-        State->BindExpr(CE, C.getLocationContext(), *PutVal);
-    StateNotFailed =
-        StateNotFailed->set<StreamMap>(StreamSym, StreamState::getOpened(Desc));
-    C.addTransition(StateNotFailed);
-  } else {
-    // Generate a transition for the success state of `fputs`.
-    NonLoc RetVal = makeRetVal(C, CE).castAs<NonLoc>();
-    ProgramStateRef StateNotFailed =
-        State->BindExpr(CE, C.getLocationContext(), RetVal);
-    SValBuilder &SVB = C.getSValBuilder();
-    auto &ASTC = C.getASTContext();
-    auto Cond = SVB.evalBinOp(State, BO_GE, RetVal, SVB.makeZeroVal(ASTC.IntTy),
-                              SVB.getConditionType())
-                    .getAs<DefinedOrUnknownSVal>();
-    if (!Cond)
-      return;
-    StateNotFailed = StateNotFailed->assume(*Cond, true);
-    if (!StateNotFailed)
-      return;
-    StateNotFailed =
-        StateNotFailed->set<StreamMap>(StreamSym, StreamState::getOpened(Desc));
-    C.addTransition(StateNotFailed);
-  }
-
-  // Add transition for the failed state. The resulting value of the file
-  // position indicator for the stream is indeterminate.
-  ProgramStateRef StateFailed = bindInt(*EofVal, State, C, CE);
-  StreamState NewSS = StreamState::getOpened(Desc, ErrorFError, true);
-  StateFailed = StateFailed->set<StreamMap>(StreamSym, NewSS);
-  C.addTransition(StateFailed);
+  evalCommon(Desc, Call, C, GetSuccessState, GetFailureState, /*IsRead=*/false);
 }
 
 void StreamChecker::evalFprintf(const FnDescription *Desc,
@@ -983,104 +1003,67 @@ void StreamChecker::evalFprintf(const FnDescription *Desc,
 
 void StreamChecker::evalFscanf(const FnDescription *Desc, const CallEvent &Call,
                                CheckerContext &C) const {
-  ProgramStateRef State = C.getState();
   if (Call.getNumArgs() < 2)
     return;
-  SymbolRef StreamSym = getStreamArg(Desc, Call).getAsSymbol();
-  if (!StreamSym)
-    return;
 
-  const CallExpr *CE = dyn_cast_or_null<CallExpr>(Call.getOriginExpr());
-  if (!CE)
-    return;
-
-  const StreamState *OldSS = State->get<StreamMap>(StreamSym);
-  if (!OldSS)
-    return;
-
-  assertStreamStateOpened(OldSS);
-
-  SValBuilder &SVB = C.getSValBuilder();
-  ASTContext &ACtx = C.getASTContext();
-
-  // Add the success state.
-  // In this context "success" means there is not an EOF or other read error
-  // before any item is matched in 'fscanf'. But there may be match failure,
-  // therefore return value can be 0 or greater.
-  // It is not specified what happens if some items (not all) are matched and
-  // then EOF or read error happens. Now this case is handled like a "success"
-  // case, and no error flags are set on the stream. This is probably not
-  // accurate, and the POSIX documentation does not tell more.
-  if (OldSS->ErrorState != ErrorFEof) {
+  auto GetSuccessState = [&](SymbolRef StreamSym, const CallExpr *CE,
+                             ASTContext &ACtx,
+                             SValBuilder &SVB) -> ProgramStateRef {
+    // Create the success state.
+    // In this context "success" means there is not an EOF or other read error
+    // before any item is matched in 'fscanf'. But there may be match failure,
+    // therefore return value can be 0 or greater.
+    // It is not specified what happens if some items (not all) are matched and
+    // then EOF or read error happens. Now this case is handled like a "success"
+    // case, and no error flags are set on the stream. This is probably not
+    // accurate, and the POSIX documentation does not tell more.
     NonLoc RetVal = makeRetVal(C, CE).castAs<NonLoc>();
     ProgramStateRef StateNotFailed =
-        State->BindExpr(CE, C.getLocationContext(), RetVal);
+        C.getState()->BindExpr(CE, C.getLocationContext(), RetVal);
     auto RetGeZero =
         SVB.evalBinOp(StateNotFailed, BO_GE, RetVal,
                       SVB.makeZeroVal(ACtx.IntTy), SVB.getConditionType())
             .getAs<DefinedOrUnknownSVal>();
     if (!RetGeZero)
-      return;
-    StateNotFailed = StateNotFailed->assume(*RetGeZero, true);
+      return nullptr;
+    return StateNotFailed->assume(*RetGeZero, true);
+  };
+  auto GetFailureState = [&](SymbolRef StreamSym, const CallExpr *CE,
+                             ASTContext &ACtx, SValBuilder &SVB) {
+    // Create the failed state.
+    // Error occurs if nothing is matched yet and reading the input fails.
+    // Error can be EOF, or other error. At "other error" FERROR or 'errno' can
+    // be set but it is not further specified if all are required to be set.
+    // Documentation does not mention, but file position will be set to
+    // indeterminate similarly as at 'fread'.
+    StreamErrorState NewES = ErrorNone | ErrorFEof | ErrorFError;
+    return std::make_pair(bindInt(*EofVal, C.getState(), C, CE), NewES);
+  };
 
-    C.addTransition(StateNotFailed);
-  }
-
-  // Add transition for the failed state.
-  // Error occurs if nothing is matched yet and reading the input fails.
-  // Error can be EOF, or other error. At "other error" FERROR or 'errno' can
-  // be set but it is not further specified if all are required to be set.
-  // Documentation does not mention, but file position will be set to
-  // indeterminate similarly as at 'fread'.
-  ProgramStateRef StateFailed = bindInt(*EofVal, State, C, CE);
-  StreamErrorState NewES = (OldSS->ErrorState == ErrorFEof)
-                               ? ErrorFEof
-                               : ErrorNone | ErrorFEof | ErrorFError;
-  StreamState NewSS = StreamState::getOpened(Desc, NewES, !NewES.isFEof());
-  StateFailed = StateFailed->set<StreamMap>(StreamSym, NewSS);
-  if (OldSS->ErrorState != ErrorFEof)
-    C.addTransition(StateFailed, constructSetEofNoteTag(C, StreamSym));
-  else
-    C.addTransition(StateFailed);
+  evalCommon(Desc, Call, C, GetSuccessState, GetFailureState, /*IsRead=*/true);
 }
 
 void StreamChecker::evalUngetc(const FnDescription *Desc, const CallEvent &Call,
                                CheckerContext &C) const {
-  ProgramStateRef State = C.getState();
-  SymbolRef StreamSym = getStreamArg(Desc, Call).getAsSymbol();
-  if (!StreamSym)
-    return;
+  auto GetSuccessState = [&](SymbolRef StreamSym, const CallExpr *CE,
+                             ASTContext &ACtx,
+                             SValBuilder &SVB) -> ProgramStateRef {
+    std::optional<NonLoc> PutVal = Call.getArgSVal(0).getAs<NonLoc>();
+    if (!PutVal)
+      return nullptr;
+    return C.getState()->BindExpr(CE, C.getLocationContext(), *PutVal);
+  };
+  auto GetFailureState = [&](SymbolRef StreamSym, const CallExpr *CE,
+                             ASTContext &ACtx, SValBuilder &SVB) {
+    // Failure of 'ungetc' does not result in feof or ferror state.
+    // If the PutVal has value of EofVal the function should "fail", but this is
+    // the same transition as the success state.
+    // In this case only one state transition is added by the analyzer (the two
+    // new states may be similar).
+    return std::make_pair(bindInt(*EofVal, C.getState(), C, CE), ErrorNone);
+  };
 
-  const CallExpr *CE = dyn_cast_or_null<CallExpr>(Call.getOriginExpr());
-  if (!CE)
-    return;
-
-  const StreamState *OldSS = State->get<StreamMap>(StreamSym);
-  if (!OldSS)
-    return;
-
-  assertStreamStateOpened(OldSS);
-
-  // Generate a transition for the success state.
-  std::optional<NonLoc> PutVal = Call.getArgSVal(0).getAs<NonLoc>();
-  if (!PutVal)
-    return;
-  ProgramStateRef StateNotFailed =
-      State->BindExpr(CE, C.getLocationContext(), *PutVal);
-  StateNotFailed =
-      StateNotFailed->set<StreamMap>(StreamSym, StreamState::getOpened(Desc));
-  C.addTransition(StateNotFailed);
-
-  // Add transition for the failed state.
-  // Failure of 'ungetc' does not result in feof or ferror state.
-  // If the PutVal has value of EofVal the function should "fail", but this is
-  // the same transition as the success state.
-  // In this case only one state transition is added by the analyzer (the two
-  // new states may be similar).
-  ProgramStateRef StateFailed = bindInt(*EofVal, State, C, CE);
-  StateFailed =
-      StateFailed->set<StreamMap>(StreamSym, StreamState::getOpened(Desc));
-  C.addTransition(StateFailed);
+  evalCommon(Desc, Call, C, GetSuccessState, GetFailureState, /*IsRead=*/false);
 }
 
 void StreamChecker::preFseek(const FnDescription *Desc, const CallEvent &Call,
