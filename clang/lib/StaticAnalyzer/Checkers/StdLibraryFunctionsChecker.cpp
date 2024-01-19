@@ -2476,8 +2476,6 @@ void StdLibraryFunctionsChecker::initFunctionSummaries(
             .ArgConstraint(
                 ArgumentCondition(0, WithinRange, Range(0, IntMax))));
 
-    std::optional<QualType> Off_tTy = lookupTy("off_t");
-
     // int truncate(const char *path, off_t length);
     addToFunctionSummaryMap(
         "truncate",
