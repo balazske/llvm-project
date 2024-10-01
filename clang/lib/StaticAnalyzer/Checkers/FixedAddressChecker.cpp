@@ -56,6 +56,11 @@ void FixedAddressChecker::checkUseOfFixedAddress(QualType DstType,
   if (!RV.isConstant() || RV.isZeroConstant())
     return;
 
+  // -1 is often used as special value in pointers when a warning would be a
+  // false positive.
+  if (const llvm::APSInt *I = RV.getAsInteger(); I && I->getSExtValue() == -1)
+    return;
+
   if (C.getSourceManager().isInSystemMacro(SrcExpr->getBeginLoc()))
     return;
 

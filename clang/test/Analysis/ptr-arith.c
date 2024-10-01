@@ -59,7 +59,12 @@ void f4(void) {
   p = FIXED_VALUE; // expected-warning{{Using a fixed address is not portable because that address will probably not be valid in all environments or platforms}}
 
   int *p2 = (int*) 1; // expected-warning{{Using a fixed address is not portable because that address will probably not be valid in all environments or platforms}}
-  f_ptr_param((void *)-1); // expected-warning{{Using a fixed address is not portable because that address will probably not be valid in all environments or platforms}}
+  f_ptr_param((void *)-2); // expected-warning{{Using a fixed address is not portable because that address will probably not be valid in all environments or platforms}}
+
+  p = (int *) 1; // expected-warning{{Using a fixed address is not portable because that address will probably not be valid in all environments or platforms}}
+  p = (int *) 0;
+  p = (int *) -1;
+  p = (int *) -2; // expected-warning{{Using a fixed address is not portable because that address will probably not be valid in all environments or platforms}}
 }
 
 void f5(void) {
