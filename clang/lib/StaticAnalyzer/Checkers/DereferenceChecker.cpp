@@ -31,10 +31,17 @@ class DereferenceChecker
     : public Checker< check::Location,
                       check::Bind,
                       EventDispatcher<ImplicitNullDerefEvent> > {
-  enum DerefKind { NullPointer, UndefinedPointerValue, AddressOfLabel };
+  enum DerefKind {
+    NullPointer,
+    UndefinedPointerValue,
+    FixedPointerValue,
+    AddressOfLabel
+  };
 
   BugType BT_Null{this, "Dereference of null pointer", categories::LogicError};
   BugType BT_Undef{this, "Dereference of undefined pointer value",
+                   categories::LogicError};
+  BugType BT_Fixed{this, "Dereference of fixed pointer value",
                    categories::LogicError};
   BugType BT_Label{this, "Dereference of the address of a label",
                    categories::LogicError};
@@ -158,6 +165,7 @@ void DereferenceChecker::reportBug(DerefKind K, ProgramStateRef State,
   const BugType *BT = nullptr;
   llvm::StringRef DerefStr1;
   llvm::StringRef DerefStr2;
+  bool NonFatalError = false;
   switch (K) {
   case DerefKind::NullPointer:
     BT = &BT_Null;
@@ -169,6 +177,13 @@ void DereferenceChecker::reportBug(DerefKind K, ProgramStateRef State,
     DerefStr1 = " results in an undefined pointer dereference";
     DerefStr2 = " results in a dereference of an undefined pointer value";
     break;
+  case DerefKind::FixedPointerValue:
+    BT = &BT_Fixed;
+    DerefStr1 = " results in a fixed pointer dereference";
+    DerefStr2 = " results in a dereference of a fixed pointer value which may "
+                "be not portable";
+    NonFatalError = true;
+    break;
   case DerefKind::AddressOfLabel:
     BT = &BT_Label;
     DerefStr1 = " results in an undefined pointer dereference";
@@ -177,7 +192,8 @@ void DereferenceChecker::reportBug(DerefKind K, ProgramStateRef State,
   };
 
   // Generate an error node.
-  ExplodedNode *N = C.generateErrorNode(State);
+  ExplodedNode *N = (NonFatalError ? C.generateNonFatalErrorNode(State)
+                                   : C.generateErrorNode(State));
   if (!N)
     return;
 
@@ -257,6 +273,13 @@ void DereferenceChecker::checkLocation(SVal l, bool isLoad, const Stmt* S,
   // Check for null dereferences.
   if (!isa<Loc>(location))
     return;
+
+  if (location.isConstant() && !location.isZeroConstant()) {
+    const Expr *DerefExpr = getDereferenceExpr(S);
+    if (!suppressReport(C, DerefExpr))
+      reportBug(DerefKind::FixedPointerValue, C.getState(), DerefExpr, C);
+    return;
+  }
 
   ProgramStateRef state = C.getState();
 

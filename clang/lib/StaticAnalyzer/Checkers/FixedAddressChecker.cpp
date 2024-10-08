@@ -27,7 +27,7 @@ using namespace ento;
 namespace {
 class FixedAddressChecker
     : public Checker<check::PreStmt<BinaryOperator>, check::PreStmt<DeclStmt>,
-                     check::PreCall> {
+                     check::PreCall /*, check::Location*/> {
   const BugType BT{this, "Use fixed address"};
 
   void checkUseOfFixedAddress(QualType DstType, const Expr *SrcExpr,
@@ -37,6 +37,8 @@ public:
   void checkPreStmt(const BinaryOperator *BO, CheckerContext &C) const;
   void checkPreStmt(const DeclStmt *DS, CheckerContext &C) const;
   void checkPreCall(const CallEvent &Call, CheckerContext &C) const;
+  void checkLocation(SVal Loc, bool IsLoad, const Stmt *S,
+                     CheckerContext &C) const;
 };
 }
 
@@ -89,6 +91,25 @@ void FixedAddressChecker::checkPreCall(const CallEvent &Call,
   for (auto Parm : enumerate(Call.parameters()))
     checkUseOfFixedAddress(Parm.value()->getType(),
                            Call.getArgExpr(Parm.index()), C);
+}
+
+void FixedAddressChecker::checkLocation(SVal Loc, bool IsLoad, const Stmt *S,
+                                        CheckerContext &C) const {
+  if (!Loc.isConstant() || Loc.isZeroConstant())
+    return;
+
+  if (C.getSourceManager().isInSystemMacro(S->getBeginLoc()))
+    return;
+
+  if (ExplodedNode *N = C.generateNonFatalErrorNode()) {
+    // FIXME: improve grammar in the following strings:
+    constexpr llvm::StringLiteral Msg =
+        "Store to or load from fixed address is not portable."
+        "";
+    auto R = std::make_unique<PathSensitiveBugReport>(BT, Msg, N);
+    R->addRange(S->getSourceRange());
+    C.emitReport(std::move(R));
+  }
 }
 
 void ento::registerFixedAddressChecker(CheckerManager &mgr) {

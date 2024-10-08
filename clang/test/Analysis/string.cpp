@@ -1,4 +1,4 @@
-// RUN: %clang_analyze_cc1 -analyzer-checker=core,unix,debug.ExprInspection -verify %s
+// RUN: %clang_analyze_cc1 -analyzer-checker=core,unix,alpha.unix.cstring.NotNullTerminated,debug.ExprInspection -verify %s
 
 // Test functions that are called "memcpy" but aren't the memcpy
 // we're looking for. Unfortunately, this test cannot be put into
