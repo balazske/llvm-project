@@ -562,7 +562,7 @@ void testC() {
 }
 
 void testAutoDtor() {
-  const A &a = *(A *)-1;
+  const A &a = *(A *)-1; // expected-warning{{Dereference of a fixed address}}
   // no-crash
 }
 } // namespace dtor_over_loc_concrete_int
