@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/AST/DynamicRecursiveASTVisitor.h"
+#include "clang/AST/ParentMapContext.h"
 #include "clang/StaticAnalyzer/Checkers/BuiltinCheckerRegistration.h"
 #include "clang/StaticAnalyzer/Core/BugReporter/BugType.h"
 #include "clang/StaticAnalyzer/Core/Checker.h"
@@ -33,6 +34,16 @@ public:
                                AnalysisDeclContext *A)
       : BR(B), Checker(Checker), AC(A) {}
   bool VisitCastExpr(CastExpr *CE) override;
+  const FunctionDecl *getParentFunction(const Stmt *S) {
+    ParentMapContext &PM = AC->getASTContext().getParentMapContext();
+    DynTypedNodeList L = PM.getParents(*S);
+    while (!L.empty()) {
+      if (const auto *FD = L.begin()->get<FunctionDecl>())
+        return FD;
+      L = PM.getParents(*L.begin());
+    }
+    return nullptr;
+  }
 };
 }
 
@@ -57,6 +68,11 @@ bool CastToStructVisitor::VisitCastExpr(CastExpr *CE) {
   // We allow cast from void*.
   if (OrigPointeeTy->isVoidType())
     return true;
+
+  if (const FunctionDecl *ParentF = getParentFunction(CE)) {
+    if (ParentF->getAttr<NoDebugAttr>())
+      return true;
+  }
 
   // Now the cast-to-type is struct pointer, the original type is not void*.
   if (!OrigPointeeTy->isRecordType()) {

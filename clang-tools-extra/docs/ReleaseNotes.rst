@@ -132,6 +132,11 @@ New checks
   pointer and store it as class members without handle the copy and move
   constructors and the assignments.
 
+- New :doc:`bugprone-cast-to-struct
+  <clang-tidy/checks/bugprone/cast-to-struct>` check.
+
+  Finds casts from pointers to struct or scalar type to pointers to struct type.
+
 - New :doc:`bugprone-misleading-setter-of-reference
   <clang-tidy/checks/bugprone/misleading-setter-of-reference>` check.
 
